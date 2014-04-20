@@ -18,10 +18,11 @@ type Node struct {
 type RegisterArgs struct {
 	ServerInfo Node
 }
+
 type RegisterReply struct {
 	Status Status
 	Servers []Node
-	Coordinator uint32			// NodeId of the coordiator node
+	Coordinator uint32			
 }
 
 type GetServersArgs struct {
@@ -33,5 +34,27 @@ type GetServersReply  struct {
 	Coordinator uint32
 }
 
+type GetArgs struct {
+	Key       string
+	SessionSecrect string
+}
 
+type GetReply struct {
+	Status Status
+	Value  string
+}
 
+type PrepareArgs {
+	Status Status
+	Value string
+}
+
+type PutArgs struct {
+	Key   string
+	Value string
+	SessionSecrect string
+}
+
+type PutReply struct {
+	Status Status
+}
