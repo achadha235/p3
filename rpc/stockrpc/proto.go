@@ -61,7 +61,7 @@ type MakeTransactionArgs struct {
 	Action, TeamID, Ticker string
 }
 
-type MakeTransactionsReply struct {
+type MakeTransactionReply struct {
 	Status Status
 }
 
@@ -80,6 +80,6 @@ type GetPriceArgs struct {
 }
 
 type GetPriceReply struct {
-	Price  int64
+	Price  int64 // Price is in cents
 	Status Status
 }
