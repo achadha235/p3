@@ -19,13 +19,15 @@ func CreateUserPassKey(id string) string { return AppendRoute(CreateUserKey(id),
 func CreateTeamKey(id string) string { return CreateKey("team", id) }
 
 // team:id/pw --> hash(pw)
-func CreateTeamPassKey(id string) string { return AppendRoute(createTeamKey(id), "pw") }
+func CreateTeamPassKey(id string) string { return AppendRoute(CreateTeamKey(id), "pw") }
 
 // team:id/balance --> team balance (int64) in cents
 func CreateTeamBalanceKey(id string) string { return AppendRoute(CreateTeamKey(id), "balance") }
 
 // team:id/ticker --> number of shares of ticker held by team
-func CreateTeamHoldingKey(teamID, ticker string) string { return AppendRoute(CreateTeamKey(id), ticker) }
+func CreateTeamHoldingKey(teamID, ticker string) string {
+	return AppendRoute(CreateTeamKey(teamID), ticker)
+}
 
 // team:id/holdings --> []holdings
 func CreateTeamHoldingsKey(id string) string { return AppendRoute(CreateTeamKey(id), "holdings") }
