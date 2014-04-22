@@ -9,31 +9,44 @@ type Status int
 // v0: Portfolio actions supported : Buy/Sell
 
 const (
-	OK               Status = iota + 1 // RPC was successful
-	NoSuchUser                         // Specified user does not exist
-	NoSuchTeam                         // Specified team does not exist
-	NoSuchStock                        // Specified stock does not exist
-	NoSuchAction                       // Specified action not supported
-	Exists                             // User/team already exists or user is already on team
-	PermissionDenied                   // User does not have permission to do the task
+	OK                   Status = iota + 1 // RPC was successful
+	NoSuchUser                             // Specified user does not exist
+	NoSuchTeam                             // Specified team does not exist
+	NoSuchTicker                           // Specified stock does not exist
+	NoSuchAction                           // Specified action not supported
+	NoSuchSession                          // Specified session key does not exist
+	InsufficientQuantity                   // Desired action cannot be fulfilled; lack of money/shares
+	Exists                                 // User/team already exists or user is already on team
+	PermissionDenied                       // User does not have permission to do the task
 )
 
 // struct used to represent the possession of shares of a stock for teams
 type Holding struct {
 	ticker   string
-	quantity int
+	quantity uint64
+	acquired time.Time
+}
+
+type LoginUserArgs struct {
+	UserID, Password string
+}
+
+type LoginUserReply struct {
+	Status     Status
+	SessionKey []byte
 }
 
 type CreateUserArgs struct {
 	UserID, Password string
 }
 
-type CreateUserArgsReply struct {
+type CreateUserReply struct {
 	Status Status
 }
 
 type CreateTeamArgs struct {
 	TeamID, Password string
+	SessionKey       []byte
 }
 
 type CreateTeamReply struct {
@@ -42,6 +55,7 @@ type CreateTeamReply struct {
 
 type JoinTeamArgs struct {
 	TeamID, Password string
+	SessionKey       []byte
 }
 
 type JoinTeamReply struct {
@@ -49,7 +63,8 @@ type JoinTeamReply struct {
 }
 
 type LeaveTeamArgs struct {
-	TeamID string
+	TeamID     string
+	SessionKey []byte
 }
 
 type LeaveTeamReply struct {
@@ -59,6 +74,8 @@ type LeaveTeamReply struct {
 // Request a transaction to be made
 type MakeTransactionArgs struct {
 	Action, TeamID, Ticker string
+	Quantity               int
+	SessionKey             []byte
 }
 
 type MakeTransactionReply struct {

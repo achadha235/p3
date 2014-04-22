@@ -21,6 +21,16 @@ func NewStockClient(host string, port int) (StockClient, error) {
 	return &stockClient{client: cli}, nil
 }
 
+func (sc *stockClient) LoginUser(userID, password string) (stockrpc.Status, []byte, error) {
+	args := &stockrpc.LoginUserArgs{UserID: userID, Password: password}
+	var reply stockrpc.LoginUserReply
+	if err := sc.client.Call("StockServer.LoginUser", args, &reply); err != nil {
+		return 0, make([]byte, 0), err
+	}
+
+	return reply.Status, reply.SessionKey, nil
+}
+
 func (sc *stockClient) CreateUser(userID, password string) (stockrpc.Status, error) {
 	args := &stockrpc.CreateUserArgs{UserID: userID, Password: password}
 	var reply stockrpc.CreateUserReply
@@ -30,8 +40,8 @@ func (sc *stockClient) CreateUser(userID, password string) (stockrpc.Status, err
 	return reply.Status, nil
 }
 
-func (sc *stockClient) CreateTeam(teamID, password string) (stockrpc.Status, error) {
-	args := &stockrpc.CreateTeamArgs{UserID: userID, Password: password}
+func (sc *stockClient) CreateTeam(teamID, password string, sessionKey []byte) (stockrpc.Status, error) {
+	args := &stockrpc.CreateTeamArgs{UserID: userID, Password: password, SessionKey: sessionKey}
 	var reply stockrpc.CreateTeamReply
 	if err := sc.client.Call("StockServer.CreateTeam", args, &reply); err != nil {
 		return 0, err
@@ -39,8 +49,8 @@ func (sc *stockClient) CreateTeam(teamID, password string) (stockrpc.Status, err
 	return reply.Status, nil
 }
 
-func (sc *stockClient) JoinTeam(teamID, password string) (stockrpc.Status, error) {
-	args := &stockrpc.JoinTeamArgs{TeamID: teamID, Password: password}
+func (sc *stockClient) JoinTeam(teamID, password string, sessionKey []byte) (stockrpc.Status, error) {
+	args := &stockrpc.JoinTeamArgs{TeamID: teamID, Password: password, SessionKey: sessionKey}
 	var reply stockrpc.JoinTeamReply
 	if err := sc.client.Call("StockServer.JoinTeam", args, &reply); err != nil {
 		return 0, err
@@ -48,8 +58,8 @@ func (sc *stockClient) JoinTeam(teamID, password string) (stockrpc.Status, error
 	return reply.Status, nil
 }
 
-func (sc *stockClient) LeaveTeam(teamID string) (stockrpc.Status, error) {
-	args := &stockrpc.LeaveTeamArgs{TeamID: teamID}
+func (sc *stockClient) LeaveTeam(teamID string, sessionKey []byte) (stockrpc.Status, error) {
+	args := &stockrpc.LeaveTeamArgs{TeamID: teamID, SessionKey: sessionKey}
 	var reply stockrpc.LeaveTeamReply
 	if err := sc.client.Call("StockServer.LeaveTeam", args, &reply); err != nil {
 		return 0, err
@@ -57,8 +67,8 @@ func (sc *stockClient) LeaveTeam(teamID string) (stockrpc.Status, error) {
 	return reply.Status, nil
 }
 
-func (sc *stockClient) MakeTransaction(action, teamID, ticker) (stockrpc.Status, error) {
-	args := &stockrpc.MakeTransactionArgs{Action: action, TeamID: teamID, Ticker: ticker}
+func (sc *stockClient) MakeTransaction(action, teamID, ticker string, quantity int, sessionKey []byte) (stockrpc.Status, error) {
+	args := &stockrpc.MakeTransactionArgs{Action: action, TeamID: teamID, Ticker: ticker, Quantity: quantity, SessionKey: sessionKey}
 	var reply stockrpc.MakeTransactionReply
 	if err := sc.client.Call("StockServer.MakeTransaction", args, &reply); err != nil {
 		return 0, err

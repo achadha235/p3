@@ -4,6 +4,7 @@
 package stockrpc
 
 type RemoteStockServer interface {
+	LoginUser(args *LoginUserArgs, reply *LoginUserReply) error
 	CreateUser(args *CreateUserArgs, reply *CreateUserReply) error
 	CreateTeam(args *CreateTeamArgs, reply *CreateTeamReply) error
 	JoinTeam(args *JoinTeamArgs, reply *JoinTeamReply) error
