@@ -1,4 +1,4 @@
-package main
+package storageserver
 
 import (
 	"github.com/achadha235/p3/rpc/storagerpc"
@@ -25,9 +25,13 @@ type cohortStorageServer struct {
 	getChannel     chan getRequest
 	putChannel     chan putRequest
 
+	//isRingMaster bool
+	//ring map[int]
+
 	storage map[string]string // Key value storage
 	undoLog map[int]storagerpc.LogEntry  // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
-	redoLog map[int]storagerpc.LogEntry  // TransactionId to Store 1. Key 2. TransactionID. (New)Value
+	redoLog map[int]storagerpc.LogEntry  // TransactionId to Store 1. Key 2. TransactionID. (New)Value 
+										 // Add a commit 
 }
 
 
@@ -229,25 +233,35 @@ func (ss *cohortStorageServer) Put(args *storagerpc.PutArgs, reply *storagerpc.P
 
 
 
-func (ss *cohortStorageServer) TransactionIsLegal(tx *Transaction) bool {
-	switch t := tx.Type {
-	case CreateUser:
-	case CreateTeam:
-	case JoinTeam:
-	case LeaveTeam:
-	case PlaceOrder:
-	default : // Fill in logic to ask if a particular type of transaction is legal
+func (ss *cohortStorageServer) TransactionIsLegal(tx *storagerpc.TransactionArgs) bool {
+	switch  {
+	case tx.Method == storagerpc.CreateUser:
+		return true
+	case tx.Method == storagerpc.CreateTeam:
+		return true
+	case tx.Method == storagerpc.JoinTeam:
+		return true
+	case tx.Method == storagerpc.LeaveTeam:
+		return true
+	case tx.Method == storagerpc.PlaceOrder:
+		return true
+	default : 
 		return true
 	}
 
 }
-func (ss *cohortStorageServer) ExecuteTransaction(tx *Transaction) error {
-	switch t := tx.Type { // Fill in logic to atomically execute a particular type of transaction 
-	case CreateUser:
-	case CreateTeam:
-	case JoinTeam:
-	case LeaveTeam:
-	case PlaceOrder:
+func (ss *cohortStorageServer) ExecuteTransaction(tx *storagerpc.TransactionArgs, reply *storagerpc.TransactionArgs) error {
+	switch { // Fill in logic to atomically execute a particular type of transaction 
+	case tx.Method == storagerpc.CreateUser:
+		return nil
+	case tx.Method == storagerpc.CreateTeam:
+		return nil
+	case tx.Method == storagerpc.JoinTeam:
+		return nil
+	case tx.Method == storagerpc.LeaveTeam:
+		return nil
+	case tx.Method == storagerpc.PlaceOrder:
+		return nil
 	default: 
 		return nil
 	}
@@ -257,7 +271,6 @@ func (ss *masterStorageServer) masterServerHandler() {
 	for {
 		select {
 		case replyChan := <-ss.requestNodeId:
-
 			client, err := rpc.DialHTTP("tcp", ":3000")
 			if err != nil {
 				log.Fatalln("dialing:", err)
