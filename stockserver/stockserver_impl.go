@@ -3,6 +3,7 @@ package stockserver
 import (
 	"achadha235/p3/libstore"
 	"achadha235/p3/rpc/stockrpc"
+	"achadha235/p3/rpc/storagerpc"
 	"achadha235/p3/util"
 	"code.google.com/p/go.crypto/bcrypt"
 	"encoding/json"
@@ -16,10 +17,14 @@ import (
 
 const (
 	DefaultStartAmount = 10000000 // starting amount (in cents)
+	MaxNumberTeams     = 3        // maximum number of teams a user can be on
+	MaxNumberUsers     = 100      // max number of users on a team
+	MaxNumberHoldings  = 1000     // max number of holdings a user can have
 )
 
 type stockServer struct {
 	server     *rpc.Server
+	nodeID     int
 	ls         libstore.Libstore
 	sessionMap map[[]byte]string // map from sessionKey to userID for that session
 }
@@ -28,16 +33,20 @@ type stockServer struct {
 // masterHostPort is the coordinator's host:port and myHostPort is the
 // port that the StockServer should listen on for StockClient calls
 
-func NewStockServer(masterHostPort, myHostPort string) (stockServer, error) {
+func NewStockServer(masterHostPort, myHostPort string, nodeID int) (stockServer, error) {
 	s := rpc.NewServer()
 
-	ls, err := libstore.NewLibstore(masterHostPort, myHostPort)
+	ls, err := libstore.NewLibstore(masterHostPort, myHostPort, nodeID)
 	if err != nil {
 		return nil, err
 	}
 
 	sMap := make(map[[]byte]string)
-	ss := &stockServer{server: s, ls: ls, sessionMap: sMap}
+	ss := &stockServer{
+		server:     s,
+		ls:         ls,
+		sessionMap: sMap,
+	}
 
 	listener, err := net.Listen("tcp", myHostPort)
 	if err != nil {
@@ -59,9 +68,8 @@ func NewStockServer(masterHostPort, myHostPort string) (stockServer, error) {
 // given a sessionKey, return the associated userID.
 // Returns non-nil error if sessionKey does not exist
 func (ss *stockServer) RetrieveSession(sessionKey []byte) (string, error) {
-	userID, err := ss.ls.Get(sessionKey)
-	if err != nil {
-		return "", err
+	if userID, ok := ss.sessionMap[userID]; !ok {
+		return "", errors.New("No such sessionKey")
 	}
 
 	return userID, nil
@@ -71,22 +79,20 @@ func (ss *stockServer) RetrieveSession(sessionKey []byte) (string, error) {
 func (ss *stockServer) LoginUser(args *LoginUserArgs, reply *LoginUserReply) error {
 	key := util.CreateUserKey(args.UserID)
 	// check if the user exists
-	_, err := ss.ls.Get(key)
+	encodedUser, err := ss.ls.Get(key)
 	if err != nil {
 		reply.Status = stockrpc.NoSuchUser
 		return nil
+	}
+
+	var user stockrpc.User
+	err = json.Unmarshal(encodedUser, user)
+	if err != nil {
+		return err
 	}
 
 	// check if user pw is correct
-	pKey := util.CreateUserPassKey
-	hashPW, err := ss.ls.Get(pKey)
-	if err != nil {
-		reply.Status = stockrpc.NoSuchUser
-		log.Println("Passkey not found on StorageServer")
-		return nil
-	}
-
-	err = bcrypt.CompareHashAndPassword(hashPW, args.Password)
+	err = bcrypt.CompareHashAndPassword(user.hashPW, args.Password)
 	if err != nil {
 		reply.Status = stockrpc.PermissionDenied
 		return nil
@@ -114,21 +120,26 @@ func (ss *stockServer) CreateUser(args *CreateUserArgs, reply *CreateUserReply) 
 		return nil
 	}
 
-	// create user if does not exist
-	err = ss.Put(key, true)
-	if err != nil {
-		return err
-	}
-
-	// generate pass key with bcrypt package
-	pKey := util.CreateUserPassKey(args.UserID)
 	hashed := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
-	err = ss.Put(pKey, string(hashed))
+
+	// create user if does not exist
+	user := &stockrpc.User{
+		userID: args.UserID,
+		hashPW: hashed,
+		teams:  make([]string, 0, MaxNumberTeams),
+	}
+
+	encodedUser, err := json.Marshal(user)
 	if err != nil {
 		return err
 	}
 
-	reply.Status = stockrpc.OK
+	status, err = ss.ls.Transact(storagerpc.CreateUser, encodedUser)
+	if err != nil {
+		return err
+	}
+
+	reply.Status = status
 	return nil
 }
 
@@ -149,31 +160,30 @@ func (ss *stockServer) CreateTeam(args *CreateTeamArgs, reply *CreateTeamReply) 
 		return nil
 	}
 
-	// create team if does not exist
-	err = ss.ls.AppendToList(teamKey, userID)
-	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
-	}
-
-	// create team balance
-	balanceKey := util.CreateTeamBalanceKey(args.TeamID)
-	err = ss.ls.Put(balanceKey, strconv.FormatUint(DefaultStartAmount, 10))
-	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
-	}
+	userList := make([]string, 0, MaxNumberUsers)
+	userList = append(userList, userID)
 
 	// create team pw
-	hashPW := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
-	pKey := util.CreateTeamPassKey(args.TeamID)
-	err = ss.ls.Put(pKey, string(hashPW))
-	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
+	hashed := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
+
+	team := &stockrpc.Team{
+		users:    userList,
+		hashPW:   hashed,
+		balance:  DefaultStartAmount,
+		holdings: make([]stockrpc.Holding, 0, MaxNumberHoldings),
 	}
 
-	reply.Status = stockrpc.OK
+	encodedTeam, err := json.Marshal(team)
+	if err != nil {
+		return err
+	}
+
+	status, err = ss.ls.Transact(storagerpc.CreateTeam, encodedTeam)
+	if err != nil {
+		return err
+	}
+
+	reply.Status = status
 	return nil
 }
 
@@ -188,36 +198,36 @@ func (ss *stockServer) JoinTeam(args *JoinTeamArgs, reply *JoinTeamReply) error 
 
 	// check if team exists
 	teamKey := util.CreateTeamKey(args.TeamID)
-	_, err = ss.ls.GetList(teamKey)
+	encodedTeam, err = ss.ls.Get(teamKey)
 	if err != nil {
 		reply.Status = stockrpc.NoSuchTeam
 		return nil
 	}
 
-	// get hashed PW for team
-	pKey := util.CreateTeamPassKey(args.TeamID)
-	hashPW, err := ss.ls.Get(pKey)
-	if err != nil {
-		reply.Status = stockrpc.NoSuchTeam
-		log.Println("No PW exists for team but team exists")
-		return nil
-	}
+	var team stockrpc.Team
+	team := json.Unmarshal(encodedTeam, team)
 
 	// verify that passwords match
-	err = bcrypt.CompareHashAndPassword([]byte(hashPW), []byte(args.Password))
+	err = bcrypt.CompareHashAndPassword([]byte(team.hashPW), []byte(args.Password))
 	if err != nil {
 		reply.Status = stockrpc.PermissionDenied
 		return nil
 	}
 
-	// add user to team
-	err = ss.ls.AppendToList(teamKey, userID)
+	// create argument for transaction JoinTeam
+	userArgs := &stockrpc.UserTeamData{userID: userID, teamID: args.TeamID}
+	data, err := json.Marshal(userArgs)
 	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
+		return err
 	}
 
-	reply.Status = stockrpc.OK
+	// attempt to perform transaction JoinTeam on LibStore
+	status, err = ss.ls.Transact(storagerpc.JoinTeam, data)
+	if err != nil {
+		return err
+	}
+
+	reply.Status = status
 	return nil
 }
 
@@ -238,14 +248,20 @@ func (ss *stockServer) LeaveTeam(args *LeaveTeamArgs, reply *LeaveTeamReply) err
 		return nil
 	}
 
-	// attempt to remove user from team
-	err = ss.ls.RemoveFromList(teamKey, userID)
+	// create args for LeaveTeam Transaction
+	args := &stockrpc.UserTeamData{userID: userID, teamID: args.TeamID}
+	data, err := json.Marshal(args)
 	if err != nil {
-		reply.Status = stockrpc.NoSuchUser
-		return nil
+		return err
 	}
 
-	reply.Status = stockrpc.OK
+	// attempt to remove user from team
+	status, err = ss.ls.Transact(storagerpc.LeaveTeam, data)
+	if err != nil {
+		return err
+	}
+
+	reply.Status = status
 	return nil
 }
 
@@ -257,133 +273,156 @@ func (ss *stockServer) MakeTransaction(args *MakeTransactionArgs, reply *MakeTra
 		return nil
 	}
 
-	// check if team exists
-	teamKey := util.CreateTeamKey(args.TeamID)
-	teamList, err = ss.ls.GetList(teamKey)
-	if err != nil {
-		reply.Status = stockrpc.NoSuchTeam
-		return nil
-	}
-
-	// check if ticker exists/get current price
-	tickerKey := util.CreateTickerKey(args.Ticker)
-	priceStr, err := ss.ls.Get(tickerKey)
-	if err != nil {
-		reply.Status = stockrpc.NoSuchTicker
-		return nil
-	}
-
-	sharePrice := strconv.ParseUint(priceStr, 10, 64)
-	// check if user is on team
-	for i := 0; i < len(teamList); i++ {
-		if teamList[i] == userID {
-			break
-		}
-
-		// if user not found, then deny permission
-		if i == len(teamList)-1 {
-			reply.Status = stockrpc.PermissionDenied
-			return nil
-		}
-
-		continue
-	}
-
-	// get team balance and perform update
-	balanceKey := util.CreateTeamBalanceKey(args.TeamID)
-	balance, err = ss.ls.GetList(balanceKey)
-	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
-	}
-
-	// get quantity of current holding
-	holdingKey := util.CreateTeamHoldingKey(args.TeamID, args.Ticker)
-	holdObj, err := ss.ls.Get(holdingKey)
-
-	var holding stockrpc.Holding
-
-	if err != nil {
-		// if not found, then team has 0 shares
-		amt := 0
-	} else {
-		err = json.Unmarshal(data, &holding)
-		if err != nil {
-			return err
-		}
-
-		amt := holding.quantity
-	}
-
-	newBalance := 0 // placeholder
-	if args.Action == "buy" {
-		// BUY TRANSACTION
-		cost := args.Quantity * sharePrice
-		if balance-cost < 0 {
-			reply.Status = stockrpc.InsufficientQuantity
-			return nil
-		}
-
-		amt += args.Quantity
-		newBalance = balance - cost
-	} else if args.Action == "sell" {
-		// SELL TRANSACTION
-		profit := args.Quantity * sharePrice
-		// not enough shares to sell
-		if amt < args.Quantity {
-			reply.Status = stockrpc.InsufficientQuantity
-			return nil
-		}
-
-		newBalance = balance + profit
-		amt -= args.Quantity
-	}
-
-	// update balance
-	err = ss.ls.Put(balanceKey, strconv.FormatUint(newBalance, 10))
-	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
-	}
-
-	// update holding
-	updatedHolding := &stockrpc.Holding{ticker: args.Ticker, quantity: amt, acquired: time.Now()}
-	jsonHolding, err := json.Marshal(updatedHolding)
+	data, err := json.Marshal(args.Requests)
 	if err != nil {
 		return err
 	}
 
-	err = ss.ls.Put(holdingKey, jsonHolding)
+	status, err := ss.ls.Transact(storagerpc.MakeTransaction, data)
 	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
+		return err
 	}
 
-	reply.Status = stockrpc.OK
+	reply.Status = status
 	return nil
+
+	/* THIS IS THE LOGIC FOR MAKING A BUY/SELL TRANSACTION /*
+
+
+	   /*	// check if team exists
+	   	teamKey := util.CreateTeamKey(args.TeamID)
+	   	teamList, err = ss.ls.GetList(teamKey)
+	   	if err != nil {
+	   		reply.Status = stockrpc.NoSuchTeam
+	   		return nil
+	   	}
+
+	   	// check if ticker exists/get current price
+	   	tickerKey := util.CreateTickerKey(args.Ticker)
+	   	priceStr, err := ss.ls.Get(tickerKey)
+	   	if err != nil {
+	   		reply.Status = stockrpc.NoSuchTicker
+	   		return nil
+	   	}
+
+	   	sharePrice := strconv.ParseUint(priceStr, 10, 64)
+	   	// check if user is on team
+	   	for i := 0; i < len(teamList); i++ {
+	   		if teamList[i] == userID {
+	   			break
+	   		}
+
+	   		// if user not found, then deny permission
+	   		if i == len(teamList)-1 {
+	   			reply.Status = stockrpc.PermissionDenied
+	   			return nil
+	   		}
+
+	   		continue
+	   	}
+
+	   	// get team balance and perform update
+	   	balanceKey := util.CreateTeamBalanceKey(args.TeamID)
+	   	balance, err = ss.ls.GetList(balanceKey)
+	   	if err != nil {
+	   		reply.Status = stockrpc.PermissionDenied
+	   		return nil
+	   	}
+
+	   	// get quantity of current holding
+	   	holdingKey := util.CreateTeamHoldingKey(args.TeamID, args.Ticker)
+	   	holdObj, err := ss.ls.Get(holdingKey)
+
+	   	var holding stockrpc.Holding
+
+	   	if err != nil {
+	   		// if not found, then team has 0 shares
+	   		amt := 0
+	   	} else {
+	   		err = json.Unmarshal(data, &holding)
+	   		if err != nil {
+	   			return err
+	   		}
+
+	   		amt := holding.quantity
+	   	}
+
+	   	newBalance := 0 // placeholder
+	   	if args.Action == "buy" {
+	   		// BUY TRANSACTION
+	   		cost := args.Quantity * sharePrice
+	   		if balance-cost < 0 {
+	   			reply.Status = stockrpc.InsufficientQuantity
+	   			return nil
+	   		}
+
+	   		amt += args.Quantity
+	   		newBalance = balance - cost
+	   	} else if args.Action == "sell" {
+	   		// SELL TRANSACTION
+	   		profit := args.Quantity * sharePrice
+	   		// not enough shares to sell
+	   		if amt < args.Quantity {
+	   			reply.Status = stockrpc.InsufficientQuantity
+	   			return nil
+	   		}
+
+	   		newBalance = balance + profit
+	   		amt -= args.Quantity
+	   	}
+
+	   	// update balance
+	   	err = ss.ls.Put(balanceKey, strconv.FormatUint(newBalance, 10))
+	   	if err != nil {
+	   		reply.Status = stockrpc.PermissionDenied
+	   		return nil
+	   	}
+
+	   	// update holding
+	   	updatedHolding := &stockrpc.Holding{ticker: args.Ticker, quantity: amt, acquired: time.Now()}
+	   	jsonHolding, err := json.Marshal(updatedHolding)
+	   	if err != nil {
+	   		return err
+	   	}
+
+	   	err = ss.ls.Put(holdingKey, jsonHolding)
+	   	if err != nil {
+	   		reply.Status = stockrpc.PermissionDenied
+	   		return nil
+	   	}
+
+	   	reply.Status = stockrpc.OK
+	   	return nil*/
 }
 
 func (ss *stockServer) GetPortfolio(args *GetPortfolioArgs, reply *GetPortfolioReply) error {
 	// check if team exists
 	teamKey := util.CreateTeamKey(args.TeamID)
-	_, err := ss.ls.GetList(teamKey)
+	encodedTeam, err := ss.ls.Get(teamKey)
 	if err != nil {
 		reply.Status = stockrpc.NoSuchTeam
 		return nil
 	}
 
-	holdingKey := util.CreateTeamHoldingsKey(args.TeamID)
-	hList, err := ss.ls.GetList(holdingKey)
+	var team stockrpc.Team
+	err = json.Unmarshal(encodedTeam, &team)
 	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
+		return err
 	}
 
+	// get holdings from IDs
+	var holding stockrpc.Holding
 	holdings := make([]stockrpc.Holding, 0, len(hList))
-	for i := 0; i < len(hList); i++ {
-		holding, err := ss.ls.Get(hList[i])
+	for i := 0; i < len(team.holdings); i++ {
+		holdingData, err := ss.ls.Get(team.holdings[i])
 		if err != nil {
-			log.Println("Holding in hList not found")
+			log.Println("Holding with ID not found: ", err)
+			return err
+		}
+
+		err = json.Unmarshal(holdingData, &holding)
+		if err != nil {
+			log.Println("Holding cannot be unmarshaled")
 			return err
 		}
 
@@ -398,13 +437,20 @@ func (ss *stockServer) GetPortfolio(args *GetPortfolioArgs, reply *GetPortfolioR
 
 func (ss *stockServer) GetPrice(args *GetPriceArgs, reply *GetPriceReply) error {
 	tickerKey := util.CreateTickerKey(args.Ticker)
-	priceStr, err := ss.ls.Get(tickerKey)
+	tickerData, err := ss.ls.Get(tickerKey)
 	if err != nil {
 		reply.Status = stockrpc.NoSuchTicker
 		return nil
 	}
 
-	reply.Price = strconv.ParseUint(priceStr, 10, 64)
+	var ticker stockrpc.Ticker
+	err = json.Unmarshal(tickerData, &ticker)
+	if err != nil {
+		log.Println("Unable to unmarshal Ticker: ", err)
+		return err
+	}
+
+	reply.Price = ticker.price
 	reply.Status = stockrpc.OK
 
 	return nil

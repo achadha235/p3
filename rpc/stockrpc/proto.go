@@ -3,6 +3,10 @@
 
 package stockrpc
 
+import (
+	"time"
+)
+
 // Status represents status of an RPC's reply
 type Status int
 
@@ -25,6 +29,37 @@ type Holding struct {
 	ticker   string
 	quantity uint64
 	acquired time.Time
+}
+
+// request structure for a single action (buy/sell in v0)
+type Request struct {
+	action, teamID, ticker string
+	quantity               int
+}
+
+// struct used to represent a user
+type User struct {
+	userID string
+	hashPW string   // hashed PW
+	teams  []string // list of team IDs that the user is on
+}
+
+// struct used to represent a team
+type Team struct {
+	users    []string  // list of userIDs of users that are on the team
+	hashPW   string    // hashed PW
+	balance  uint64    // balance in cents
+	holdings []Holding // list of holding IDs
+}
+
+// struct for args to JoinTeam Transaction
+type UserTeamData struct {
+	userID string
+	teamID string
+}
+
+type Ticker struct {
+	price uint64
 }
 
 type LoginUserArgs struct {
@@ -73,9 +108,8 @@ type LeaveTeamReply struct {
 
 // Request a transaction to be made
 type MakeTransactionArgs struct {
-	Action, TeamID, Ticker string
-	Quantity               int
-	SessionKey             []byte
+	Requests   []Request
+	SessionKey []byte
 }
 
 type MakeTransactionReply struct {
