@@ -48,13 +48,13 @@ const (
 	PermissionDenied                       
 )
 
-type TransactionArgs struct {
+type ExecuteTransactionArgs struct {
 	TransactionId int
 	Type TransactionType
 	Data TransactionData
 }
 
-type TransactionReply struct {
+type ExecuteTransactionReply struct {
 	Status TransactionStatus
 	Error error
 }
