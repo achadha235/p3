@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"errors"
+	"github.com/achadha235/p3/rpc/storagerpc"
 	"fmt"
 	"log"
 	"net"
@@ -10,31 +10,10 @@ import (
 	"runtime"
 )
 
-type Status int
-
-const (
-	NotReady = iota
-	OK
-)
-
-type CommitStatus int
-
-const (
-	Commit = iota
-	Rollback
-)
-
-type Node struct {
-	NodeId   int
-	HostPort string
-	Master   bool
-	client   *rpc.Client
-}
-
 type masterStorageServer struct {
 	client            chan int
-	self              Node
-	servers           map[int]*Node
+	self              storagerpc.Node
+	servers           map[int]*storagerpc.Node
 	nextServerId      int
 	nextTransactionId int
 	requestNodeId     chan chan int
@@ -49,40 +28,38 @@ type cohortStorageServer struct {
 	putChannel     chan putRequest
 
 	storage map[string]string // Key value storage
-	undoLog map[int]LogEntry  // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
-	redoLog map[int]LogEntry  // TransactionId to Store 1. Key 2. TransactionID. (New)Value
+	undoLog map[int]storagerpc.LogEntry  // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
+	redoLog map[int]storagerpc.LogEntry  // TransactionId to Store 1. Key 2. TransactionID. (New)Value
 }
 
-type LogEntry struct {
-	TransactionId int
-	Key           string
-	Value         string
-}
+
 
 type proposeRequest struct {
-	args  *ProposeArgs
+	args  *storagerpc.ProposeArgs
 	reply chan error
 }
 
 type prepareRequest struct {
-	args  *PrepareArgs
+	args  *storagerpc.PrepareArgs
 	reply chan error
 }
 
 type commitRequest struct {
-	args  *CommitArgs
+	args  *storagerpc.CommitArgs
 	reply chan error
 }
 
 type getRequest struct {
-	args  *GetArgs
-	reply chan GetReply
+	args  *storagerpc.GetArgs
+	reply chan storagerpc.GetReply
 }
 
 type putRequest struct {
-	args  *PutArgs
+	args  *storagerpc.PutArgs
 	reply chan error
 }
+
+
 
 func main() {
 	master := StartMasterServer()
@@ -95,8 +72,8 @@ func main() {
 		log.Fatalln("dialing:", err)
 	}
 
-	args := &PutArgs{"hello", "world"}
-	var reply *PutReply
+	args := &storagerpc.PutArgs{"hello", "world"}
+	var reply *storagerpc.PutReply
 	err = client.Call("CohortStorageServer.Put", args, &reply)
 	if err != nil {
 		log.Fatalln("Put error:", err)
@@ -104,8 +81,8 @@ func main() {
 	fmt.Println("Reply returned")
 	fmt.Println(reply)
 
-	args2 := &GetArgs{"hello"}
-	var reply2 *GetReply
+	args2 := &storagerpc.GetArgs{"hello"}
+	var reply2 *storagerpc.GetReply
 	err = client.Call("CohortStorageServer.Get", args2, &reply2)
 	if err != nil {
 		log.Fatalln("Get error: ", err)
@@ -116,7 +93,7 @@ func main() {
 }
 
 // 2PC leader handler
-func StartMasterServer() *masterStorageServer {
+func StartMasterServer() storagerpc.MasterStorageServer {
 	fmt.Println("Entering StartMasterServer")
 	defer fmt.Println("Exit StartMasterServer")
 
@@ -125,7 +102,7 @@ func StartMasterServer() *masterStorageServer {
 	server.nextTransactionId = 1
 	server.requestNodeId = make(chan chan int)
 	server.proposeChannel = make(chan proposeRequest)
-	server.servers = make(map[int]*Node)
+	server.servers = make(map[int]*storagerpc.Node)
 
 	rpc.RegisterName("MasterStorageServer", server)
 	rpc.HandleHTTP()
@@ -140,7 +117,7 @@ func StartMasterServer() *masterStorageServer {
 }
 
 // 2PC cohort handler
-func StartCohortServer() *cohortStorageServer {
+func StartCohortServer() storagerpc.CohortStorageServer {
 	fmt.Println("Entering StartCohortServer")
 	defer fmt.Println("Exit StartCohortServer")
 
@@ -148,8 +125,8 @@ func StartCohortServer() *cohortStorageServer {
 	if err != nil {
 		log.Fatalln("dialing:", err)
 	}
-	args := &RegisterServerArgs{}
-	var reply *RegisterServerReply
+	args := &storagerpc.RegisterServerArgs{}
+	var reply *storagerpc.RegisterServerReply
 	err = client.Call("MasterStorageServer.RegisterServer", args, &reply)
 	if err != nil {
 		log.Fatalln("Register error:", err)
@@ -167,8 +144,8 @@ func StartCohortServer() *cohortStorageServer {
 	server.putChannel = make(chan putRequest)
 
 	server.storage = make(map[string]string)
-	server.redoLog = make(map[int]LogEntry)
-	server.undoLog = make(map[int]LogEntry)
+	server.redoLog = make(map[int]storagerpc.LogEntry)
+	server.undoLog = make(map[int]storagerpc.LogEntry)
 
 	rpc.RegisterName("CohortStorageServer", server)
 
@@ -178,61 +155,9 @@ func StartCohortServer() *cohortStorageServer {
 	return server
 }
 
-// RPC code
 
-type RegisterServerArgs struct {
-}
 
-type RegisterServerReply struct {
-	Status int
-	NodeId int
-}
-
-type ProposeArgs struct {
-	Key   string
-	Value string
-}
-
-type ProposeReply struct {
-	Status Status
-}
-
-type PrepareArgs struct {
-	TransactionId int
-	Key           string
-	Value         string
-}
-
-type PrepareReply struct {
-	Status Status
-}
-
-type CommitArgs struct {
-	TransactionId int
-	Status        CommitStatus
-}
-
-type CommitReply struct {
-}
-
-type GetArgs struct {
-	Key string
-}
-
-type GetReply struct {
-	Key   string
-	Value string
-}
-
-type PutArgs struct {
-	Key   string
-	Value string
-}
-
-type PutReply struct {
-}
-
-func (ss *masterStorageServer) RegisterServer(args *RegisterServerArgs, reply *RegisterServerReply) error {
+func (ss *masterStorageServer) RegisterServer(args *storagerpc.RegisterServerArgs, reply *storagerpc.RegisterServerReply) error {
 	fmt.Println("Enter RegisterServer")
 	defer fmt.Println("Exit RegisterServer")
 
@@ -240,11 +165,11 @@ func (ss *masterStorageServer) RegisterServer(args *RegisterServerArgs, reply *R
 	ss.requestNodeId <- replyChan
 	newNodeId := <-replyChan
 
-	reply.Status = OK
+	reply.Status = storagerpc.OK
 	reply.NodeId = newNodeId
 	return nil
 }
-func (ss *masterStorageServer) Propose(args *ProposeArgs, reply *ProposeReply) error {
+func (ss *masterStorageServer) Propose(args *storagerpc.ProposeArgs, reply *storagerpc.ProposeReply) error {
 	fmt.Println("Enter Propose")
 	defer fmt.Println("Exit Propose")
 
@@ -255,15 +180,15 @@ func (ss *masterStorageServer) Propose(args *ProposeArgs, reply *ProposeReply) e
 	}
 	error := <-r
 	if error != nil {
-		reply.Status = OK
+		reply.Status = storagerpc.OK
 	} else {
-		reply.Status = OK
+		reply.Status = storagerpc.OK
 
 	}
 	return error
 }
 
-func (ss *cohortStorageServer) Prepare(args *PrepareArgs, reply *PrepareReply) error {
+func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *storagerpc.PrepareReply) error {
 	fmt.Println("Enter Prepare")
 	defer fmt.Println("Exit Prepare")
 
@@ -281,15 +206,15 @@ func (ss *cohortStorageServer) Prepare(args *PrepareArgs, reply *PrepareReply) e
 	fmt.Println("got error")
 
 	if error != nil {
-		reply.Status = OK
+		reply.Status = storagerpc.OK
 	} else {
-		reply.Status = OK
+		reply.Status = storagerpc.OK
 
 	}
 	return error
 }
 
-func (ss *cohortStorageServer) Commit(args *CommitArgs, reply *CommitReply) error {
+func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
 	fmt.Println("Enter Commit")
 	defer fmt.Println("Exit Commit")
 
@@ -304,22 +229,22 @@ func (ss *cohortStorageServer) Commit(args *CommitArgs, reply *CommitReply) erro
 	return nil
 }
 
-func (ss *cohortStorageServer) Get(args *GetArgs, reply *GetReply) error {
+func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.GetReply) error {
 	fmt.Println("Enter Get")
 	defer fmt.Println("Exit Get")
 
-	r := make(chan GetReply)
+	r := make(chan storagerpc.GetReply)
 	ss.getChannel <- getRequest{
 		args,
 		r,
 	}
-	getReply := <-r
+	getReply := <- r
 	reply.Key = getReply.Key
 	reply.Value = getReply.Value
 	return nil
 }
 
-func (ss *cohortStorageServer) Put(args *PutArgs, reply *PutReply) error {
+func (ss *cohortStorageServer) Put(args *storagerpc.PutArgs, reply *storagerpc.PutReply) error {
 	fmt.Println("Enter Put")
 	defer fmt.Println("Exit Put")
 
@@ -347,7 +272,7 @@ func (ss *masterStorageServer) masterServerHandler() {
 				log.Fatalln("dialing:", err)
 			}
 			fmt.Println("Connection established")
-			newNode := &Node{
+			newNode := &storagerpc.Node{
 				ss.nextServerId,
 				"localhost:3000",
 				false,
@@ -360,7 +285,7 @@ func (ss *masterStorageServer) masterServerHandler() {
 		case proposeReq := <-ss.proposeChannel:
 
 			// Prepare for something
-			args := &PrepareArgs{
+			args := &storagerpc.PrepareArgs{
 				ss.nextTransactionId,
 				proposeReq.args.Key,
 				proposeReq.args.Value,
@@ -371,28 +296,28 @@ func (ss *masterStorageServer) masterServerHandler() {
 	}
 }
 
-func (ss *masterStorageServer) prepareCohort(proposeReq proposeRequest, args *PrepareArgs) {
+func (ss *masterStorageServer) prepareCohort(proposeReq proposeRequest, args *storagerpc.PrepareArgs) {
 	fmt.Println("Preparing cohort")
-	stat := CommitStatus(Commit)
+	stat := storagerpc.CommitStatus(storagerpc.Commit)
 	var err error
 
 	fmt.Println("Preparing cohort...")
 	for nodeId, node := range ss.servers {
 		fmt.Println(nodeId)
-		var reply *PrepareReply
-		err := node.client.Call("CohortStorageServer.Prepare", args, &reply)
+		var reply *storagerpc.PrepareReply
+		err := node.Client.Call("CohortStorageServer.Prepare", args, &reply)
 		if err != nil {
-			stat = Rollback
+			stat = storagerpc.Rollback
 		}
 	}
 	fmt.Println("Commiting cohort")
 	for _, node := range ss.servers {
-		args2 := &CommitArgs{
+		args2 := &storagerpc.CommitArgs{
 			args.TransactionId,
 			stat,
 		}
-		var reply2 *CommitReply
-		err := node.client.Call("CohortStorageServer.Commit", args2, &reply2)
+		var reply2 *storagerpc.CommitReply
+		err := node.Client.Call("CohortStorageServer.Commit", args2, &reply2)
 		if err != nil {
 			proposeReq.reply <- err
 		}
@@ -415,8 +340,8 @@ func (ss *cohortStorageServer) cohortServerHandler() {
 			transactionId := prepareReq.args.TransactionId
 			key := prepareReq.args.Key
 
-			undoLogEntry := LogEntry{transactionId, key, oldValue}
-			redoLogEntry := LogEntry{transactionId, key, newValue}
+			undoLogEntry := storagerpc.LogEntry{transactionId, key, oldValue}
+			redoLogEntry := storagerpc.LogEntry{transactionId, key, newValue}
 			ss.undoLog[transactionId] = undoLogEntry
 			ss.redoLog[transactionId] = redoLogEntry
 
@@ -426,7 +351,7 @@ func (ss *cohortStorageServer) cohortServerHandler() {
 
 		case commitReq := <-ss.commitChannel:
 
-			if commitReq.args.Status == Commit {
+			if commitReq.args.Status == storagerpc.Commit {
 				log, exists := ss.redoLog[commitReq.args.TransactionId]
 				if !exists {
 				}
@@ -445,7 +370,8 @@ func (ss *cohortStorageServer) cohortServerHandler() {
 		case getReq := <-ss.getChannel:
 			fmt.Println("entering getReq case")
 			val := ss.storage[getReq.args.Key]
-			rsp := GetReply{
+			
+			rsp := storagerpc.GetReply{
 				getReq.args.Key,
 				val,
 			}
@@ -453,15 +379,14 @@ func (ss *cohortStorageServer) cohortServerHandler() {
 
 		case putReq := <-ss.putChannel:
 			fmt.Println("entering putReq case")
-			args2 := &ProposeArgs{
+			args2 := &storagerpc.ProposeArgs{
 				putReq.args.Key,
 				putReq.args.Value,
 			}
-			var reply2 *ProposeReply
+			var reply2 *storagerpc.ProposeReply
 			doneCh := make(chan *rpc.Call, 1)
 			ss.rpc.Go("MasterStorageServer.Propose", args2, &reply2, doneCh)
 			go ss.handlePrepareRPC(putReq, doneCh)
-
 		}
 	}
 }
