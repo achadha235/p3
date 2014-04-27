@@ -25,6 +25,44 @@ type Node struct {
 }
 
 
+type TransactionType int
+const (
+	CreateUser = iota
+	CreateTeam
+	JoinTeam
+	LeaveTeam
+	PlaceOrder
+	BuyCompany
+)
+
+type TransactionStatus int
+const (
+	OK                   TransactionStatus = iota + 1 
+	NoSuchUser                             
+	NoSuchTeam                             
+	NoSuchTicker                           
+	NoSuchAction                           
+	NoSuchSession                          
+	InsufficientQuantity                   
+	Exists                                 
+	PermissionDenied                       
+)
+
+type TransactionArgs struct {
+	TransactionId int
+	Type TransactionType
+	Data TransactionData
+}
+
+type TransactionReply struct {
+	Status TransactionStatus
+	Error error
+}
+
+type TransactionData struct {
+	jsonString string
+}
+
 type LogEntry struct {
 	TransactionId int
 	Key           string

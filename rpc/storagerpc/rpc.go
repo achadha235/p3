@@ -9,5 +9,8 @@ type CohortStorageServer interface {
 	Prepare(*PrepareArgs, *PrepareReply) error 
 	Commit(*CommitArgs, *CommitReply) error 
 	Get(*GetArgs, *GetReply) error 
-	Put(*PutArgs, *PutReply) error 
+	Transact(*TransactionArgs, *TransactionReply) error 
 }
+
+
+
