@@ -28,13 +28,11 @@ type cohortStorageServer struct {
 	//isRingMaster bool
 	//ring map[int]
 
-	storage map[string]string // Key value storage
-	undoLog map[int]storagerpc.LogEntry  // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
-	redoLog map[int]storagerpc.LogEntry  // TransactionId to Store 1. Key 2. TransactionID. (New)Value 
-										 // Add a commit 
+	storage map[string]string           // Key value storage
+	undoLog map[int]storagerpc.LogEntry // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
+	redoLog map[int]storagerpc.LogEntry // TransactionId to Store 1. Key 2. TransactionID. (New)Value
+	// Add a commit
 }
-
-
 
 type proposeRequest struct {
 	args  *storagerpc.ProposeArgs
@@ -61,8 +59,6 @@ type putRequest struct {
 	reply chan error
 }
 
-
-
 func main() {
 	master := StartMasterServer()
 	cohort := StartCohortServer()
@@ -85,7 +81,6 @@ func main() {
 	if err != nil {
 		log.Fatalln("Get error: ", err)
 	}
-
 
 }
 
@@ -144,8 +139,6 @@ func StartCohortServer() storagerpc.CohortStorageServer {
 
 	return server
 }
-
-
 
 func (ss *masterStorageServer) RegisterServer(args *storagerpc.RegisterServerArgs, reply *storagerpc.RegisterServerReply) error {
 
@@ -213,12 +206,11 @@ func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.G
 		args,
 		r,
 	}
-	getReply := <- r
+	getReply := <-r
 	reply.Key = getReply.Key
 	reply.Value = getReply.Value
 	return nil
 }
-
 
 // CHANGE
 func (ss *cohortStorageServer) Put(args *storagerpc.PutArgs, reply *storagerpc.PutReply) error {
@@ -231,10 +223,8 @@ func (ss *cohortStorageServer) Put(args *storagerpc.PutArgs, reply *storagerpc.P
 	return nil
 }
 
-
-
 func (ss *cohortStorageServer) TransactionIsLegal(tx *storagerpc.TransactionArgs) bool {
-	switch  {
+	switch {
 	case tx.Method == storagerpc.CreateUser:
 		return true
 	case tx.Method == storagerpc.CreateTeam:
@@ -245,13 +235,13 @@ func (ss *cohortStorageServer) TransactionIsLegal(tx *storagerpc.TransactionArgs
 		return true
 	case tx.Method == storagerpc.PlaceOrder:
 		return true
-	default : 
+	default:
 		return true
 	}
 
 }
 func (ss *cohortStorageServer) ExecuteTransaction(tx *storagerpc.TransactionArgs, reply *storagerpc.TransactionArgs) error {
-	switch { // Fill in logic to atomically execute a particular type of transaction 
+	switch { // Fill in logic to atomically execute a particular type of transaction
 	case tx.Method == storagerpc.CreateUser:
 		return nil
 	case tx.Method == storagerpc.CreateTeam:
@@ -262,7 +252,7 @@ func (ss *cohortStorageServer) ExecuteTransaction(tx *storagerpc.TransactionArgs
 		return nil
 	case tx.Method == storagerpc.PlaceOrder:
 		return nil
-	default: 
+	default:
 		return nil
 	}
 }
@@ -328,7 +318,6 @@ func (ss *cohortStorageServer) cohortServerHandler() {
 		select {
 		case prepareReq := <-ss.prepareChannel:
 
-
 			oldValue := ss.storage[prepareReq.args.Key]
 			newValue := prepareReq.args.Value
 			transactionId := prepareReq.args.TransactionId
@@ -362,7 +351,7 @@ func (ss *cohortStorageServer) cohortServerHandler() {
 
 		case getReq := <-ss.getChannel:
 			val := ss.storage[getReq.args.Key]
-			
+
 			rsp := storagerpc.GetReply{
 				getReq.args.Key,
 				val,

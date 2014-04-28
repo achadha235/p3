@@ -112,17 +112,10 @@ func (ss *stockServer) LoginUser(args *LoginUserArgs, reply *LoginUserReply) err
 
 // CreateUser adds a user to the game, or returns Exists if userID is already in use
 func (ss *stockServer) CreateUser(args *CreateUserArgs, reply *CreateUserReply) error {
-	key := util.CreateUserKey(args.UserID)
-	// check if the userID exists
-	_, err := ss.ls.Get(key)
-	if err != nil {
-		reply.Status = stockrpc.Exists
-		return nil
-	}
 
 	hashed := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
 
-	// create user if does not exist
+	// create user object
 	user := &stockrpc.User{
 		userID: args.UserID,
 		hashPW: hashed,
@@ -152,14 +145,6 @@ func (ss *stockServer) CreateTeam(args *CreateTeamArgs, reply *CreateTeamReply) 
 		return nil
 	}
 
-	// check if the teamID exists
-	teamKey := util.CreateTeamKey(args.TeamID)
-	_, err = ss.ls.Get(teamKey)
-	if err != nil {
-		reply.Status = stockrpc.Exists
-		return nil
-	}
-
 	userList := make([]string, 0, MaxNumberUsers)
 	userList = append(userList, userID)
 
@@ -167,6 +152,7 @@ func (ss *stockServer) CreateTeam(args *CreateTeamArgs, reply *CreateTeamReply) 
 	hashed := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
 
 	team := &stockrpc.Team{
+		teamID:   args.TeamID,
 		users:    userList,
 		hashPW:   hashed,
 		balance:  DefaultStartAmount,
@@ -178,6 +164,7 @@ func (ss *stockServer) CreateTeam(args *CreateTeamArgs, reply *CreateTeamReply) 
 		return err
 	}
 
+	// Attempt to CreateTeam and return propogated status
 	status, err = ss.ls.Transact(storagerpc.CreateTeam, encodedTeam)
 	if err != nil {
 		return err
@@ -196,24 +183,6 @@ func (ss *stockServer) JoinTeam(args *JoinTeamArgs, reply *JoinTeamReply) error 
 		return nil
 	}
 
-	// check if team exists
-	teamKey := util.CreateTeamKey(args.TeamID)
-	encodedTeam, err = ss.ls.Get(teamKey)
-	if err != nil {
-		reply.Status = stockrpc.NoSuchTeam
-		return nil
-	}
-
-	var team stockrpc.Team
-	team := json.Unmarshal(encodedTeam, team)
-
-	// verify that passwords match
-	err = bcrypt.CompareHashAndPassword([]byte(team.hashPW), []byte(args.Password))
-	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
-		return nil
-	}
-
 	// create argument for transaction JoinTeam
 	userArgs := &stockrpc.UserTeamData{userID: userID, teamID: args.TeamID}
 	data, err := json.Marshal(userArgs)
@@ -221,7 +190,7 @@ func (ss *stockServer) JoinTeam(args *JoinTeamArgs, reply *JoinTeamReply) error 
 		return err
 	}
 
-	// attempt to perform transaction JoinTeam on LibStore
+	// attempt to perform transaction JoinTeam, propogate status reply
 	status, err = ss.ls.Transact(storagerpc.JoinTeam, data)
 	if err != nil {
 		return err
@@ -237,14 +206,6 @@ func (ss *stockServer) LeaveTeam(args *LeaveTeamArgs, reply *LeaveTeamReply) err
 	userID, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
 		reply.Status = stockrpc.NoSuchSession
-		return nil
-	}
-
-	// check if team exists
-	teamKey := util.CreateTeamKey(args.TeamID)
-	_, err = ss.ls.GetList(teamKey)
-	if err != nil {
-		reply.Status = stockrpc.NoSuchTeam
 		return nil
 	}
 

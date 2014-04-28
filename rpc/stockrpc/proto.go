@@ -46,6 +46,7 @@ type User struct {
 
 // struct used to represent a team
 type Team struct {
+	teamID   string
 	users    []string  // list of userIDs of users that are on the team
 	hashPW   string    // hashed PW
 	balance  uint64    // balance in cents

@@ -1,4 +1,5 @@
 package storagerpc
+
 import (
 	"net/rpc"
 )
@@ -24,8 +25,8 @@ type Node struct {
 	Client   *rpc.Client
 }
 
-
 type TransactionType int
+
 const (
 	CreateUser = iota
 	CreateTeam
@@ -36,27 +37,28 @@ const (
 )
 
 type TransactionStatus int
+
 const (
-	TransactionOK                   TransactionStatus = iota + 1 
-	NoSuchUser                             
-	NoSuchTeam                             
-	NoSuchTicker                           
-	NoSuchAction                           
-	NoSuchSession                          
-	InsufficientQuantity                   
-	Exists                                 
-	PermissionDenied                       
+	TransactionOK TransactionStatus = iota + 1
+	NoSuchUser
+	NoSuchTeam
+	NoSuchTicker
+	NoSuchAction
+	NoSuchSession
+	InsufficientQuantity
+	Exists
+	PermissionDenied
 )
 
 type TransactionArgs struct {
 	TransactionId int
-	Method TransactionType
-	Data TransactionData
+	Method        TransactionType
+	Data          TransactionData
 }
 
 type TransactionReply struct {
 	Status TransactionStatus
-	Error error
+	Error  error
 }
 
 type TransactionData struct {
@@ -75,6 +77,14 @@ type RegisterServerArgs struct {
 type RegisterServerReply struct {
 	Status int
 	NodeId int
+}
+
+type GetServersArgs struct {
+}
+
+type GetServersReply struct {
+	Status  Status
+	Servers []Node
 }
 
 type ProposeArgs struct {
