@@ -141,7 +141,6 @@ func StartCohortServer() storagerpc.CohortStorageServer {
 }
 
 func (ss *masterStorageServer) RegisterServer(args *storagerpc.RegisterServerArgs, reply *storagerpc.RegisterServerReply) error {
-
 	replyChan := make(chan int)
 	ss.requestNodeId <- replyChan
 	newNodeId := <-replyChan

@@ -21,4 +21,6 @@
 #### 3. Look into using Martini web framework for RESTful API for Client
 
 
-Misc: Connect StorageServers to Yahoo Finance API for prices 
+Misc: Connect StorageServers to Yahoo Finance API for prices
+
+#TODO: Merge statuses together into one file.

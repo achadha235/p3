@@ -3,6 +3,7 @@ package coordinator
 import (
 	"achadha235/p3/rpc/storagerpc"
 	"achadha235/p3/util"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -22,10 +23,11 @@ Implementation Plan:
 */
 
 type coordinator struct {
-	masterStorageServer *rpc.Client       // RPC connection to masterStorage
-	servers             []storagerpc.Node // slice of storage servers
-	nextServerId        int
-	nextTransactionId   int
+	masterStorageServer *rpc.Client            // RPC connection to masterStorage
+	servers             []storagerpc.Node      // slice of storage servers
+	nextTransactionIds  map[string]int         // [hostport] --> next TransactionID for that StorageServer
+	connections         map[string]*rpc.Client // [hostport] --> client conn
+	nextCommitId        int
 	/*	client            chan int*/
 	/*	self              storagerpc.Node*/
 	/*	requestNodeId     chan chan int*/
@@ -61,12 +63,23 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 		time.Sleep(time.Second)
 	}
 
+	// create conns to be cached and add masterServer to map
+	conns := make(map[string]*rpc.Client)
+	conns[masterServerHostPort] = cli
+
+	// create and init unique Ids for every node in the ring
+	nextIds := make(map[string]int)
+	for i := 0; i < len(servers); i++ {
+		nextIds[servers[i].HostPort] = 1
+	}
+
 	// create the coordinator
 	coord := &coordinator{
 		masterStorageServer: cli,
 		servers:             servers,
-		nextServerId:        1,
-		nextTransactionId:   1,
+		nextTransactionIds:  nextIds,
+		connections:         conns,
+		nextCommitId:        1,
 	}
 
 	rpc.RegisterName("Coordinator", coord)
@@ -80,18 +93,41 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 	return coord, nil
 }
 
-func (coord *coordinator) Propose(args *storagerpc.ProposeArgs, reply *storagerpc.ProposeReply) error {
-
-	// Prepare for transaction
-	tArgs := &storagerpc.PrepareArgs{
-		TransactionId: coord.nextTransactionId,
-		Key:           args.Key,
-		Value:         args.Value,
+/* PerformTransaction will break apart a transaction and
+   send the appropriate updates to each corresponding
+   StorageServer using a 2PC propose call */
+func (coord *coordinator) PerformTransaction(name storagerpc.TransactionType, data string) (storagerpc.TransactionStatus, error) {
+	switch name {
+	// TODO: use data to break up route appropriately
+	case storagerpc.CreateUser:
+	case storagerpc.CreateTeam:
+	case storagerpc.JoinTeam:
+	case storagerpc.LeaveTeam:
+	case storagerpc.MakeTransaction:
 	}
 
-	coord.nextTransactionId++
+	return 0, errors.New("No such method name")
+}
+
+/*func (coord *coordinator) Propose(args *storagerpc.ProposeArgs, reply *storagerpc.ProposeReply) error {*/
+
+/* callName: Get/Put/Execute
+ * data: JSON-marshaled obj for use with callName */
+func (coord *coordinator) Propose(transactionId int, callName, data string) (storagerpc.Status, error) {
+	// Prepare for transaction
+	hostport := ""
+	tArgs := &storagerpc.PrepareArgs{
+		// Not correct right now placeholder
+		TransactionId: coord.nextTransactionIds[hostport],
+		Key:           callName,
+		Value:         data,
+	}
+
+	coord.nextTransactionIds[hostport]++
+
 	stat := storagerpc.CommitStatus(storagerpc.Commit)
 	var err error
+	resultStatus := storagerpc.OK
 
 	// channel to receive async replies from CohortServers
 	doneCh := make(chan *rpc.Call, len(coord.servers))
@@ -107,7 +143,9 @@ func (coord *coordinator) Propose(args *storagerpc.ProposeArgs, reply *storagerp
 		rpcReply := <-doneCh
 
 		// if RPC fails or non-OK status then Rollback
-		if rpcReply.Error != nil || rpcReply.Reply.(*storagerpc.ProposeReply).Status != storagerpc.OK {
+		replyStatus := rpcReply.Reply.(*storagerpc.ProposeReply).Status
+		if rpcReply.Error != nil || replyStatus != storagerpc.OK {
+			resultStatus := replyStatus
 			stat = storagerpc.Rollback
 		}
 	}
@@ -129,32 +167,8 @@ func (coord *coordinator) Propose(args *storagerpc.ProposeArgs, reply *storagerp
 
 		// TODO: if RPC fails then retry sending message until all received (?)
 		if rpcReply.Error != nil {
-			return rpcReply.Error
+			return 0, rpcReply.Error
 		}
 	}
-
-	reply.Status = storagerpc.OK
-	return nil
+	return storagerpc.Status(resultStatus), nil
 }
-
-/*
-func (coord *coordinator) coordinatorHandler() {
-	for {
-		select {
-		case replyChan := <-coord.requestNodeId:
-			client, err := rpc.DialHTTP("tcp", ":3000")
-			if err != nil {
-				log.Fatalln("dialing:", err)
-			}
-			newNode := &storagerpc.Node{
-				NodeId:   coord.nextServerId,
-				HostPort: "localhost:3000",
-				Master:   false,
-				Client:   client,
-			}
-			coord.servers[newNode.NodeId] = newNode
-			coord.nextServerId++
-			replyChan <- coord.nextServerId
-		}
-	}
-}*/

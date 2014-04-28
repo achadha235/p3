@@ -32,7 +32,7 @@ const (
 	CreateTeam
 	JoinTeam
 	LeaveTeam
-	PlaceOrder
+	MakeTransaction
 	BuyCompany
 )
 
@@ -88,8 +88,9 @@ type GetServersReply struct {
 }
 
 type ProposeArgs struct {
-	Key   string
-	Value string
+	TransactionId int
+	CallName      string // Method Name
+	Data          string // json-marshaled string of data for the requested call
 }
 
 type ProposeReply struct {

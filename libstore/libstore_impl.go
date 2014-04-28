@@ -91,31 +91,13 @@ func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
 	return ls, nil
 }
 
-/*// selects a random server and connects to it
-// updates libstore client and cache connection
-func (ls *libstore) connectToRandom() error {
-	randInd := util.random(0, len(ls.storageServers)-1)
-	hostport := ls.StorageServers[randInd]
-	// if connection exists, reuse it
-	if _, ok := ls.connections[hostport]; ok {
-		ls.client = ls.connections[hostport]
-		return nil
-	}
+/*
+Here we want to perform some basic checks outside of 2PC such as
+	whether or not the user/team exists, a ticker is valid, etc.
 
-	for numTries := 3; numTries >= 0; numTries-- {
-		cli, err := rpc.DialHTTP("tcp", hostport)
-		if err != nil {
-			continue
-		}
-
-		ls.port = hostport
-		ls.connections[hostport] = cli
-		ls.client = cli
-		return nil
-	}
-
-	return err
-}*/
+	Other permissions, such as a user being on a team or other
+	cases like a balance going invalid should be handled in the 2PC
+*/
 
 func (ls *libstore) Get(key string) (string, error) {
 	args := &storagerpc.GetArgs{Key: key}
@@ -135,6 +117,29 @@ func (ls *libstore) Get(key string) (string, error) {
 	return "", errors.New("RPC Get returned status: " + reply.Status)
 }
 
+func (ls *libstore) Put(key, value string) error {
+	args := &storagerpc.PutArgs{Key: key, Value: value}
+	var reply storagerpc.PutReply
+
+	ss := ls.findServerFromKey(key)
+
+	err := ls.client.Call("StorageServer.Put", args, &reply)
+	if err != nil {
+		ls.connections[ls.port] = nil
+		ls.connectToRandom()
+		return err
+	}
+
+	if reply.Status == storagerpc.OK {
+		return nil
+	}
+
+	return errors.New("RPC Put returned status: " + reply.Status)
+}
+
+/* Transact performs basic checks such as whether a user/team
+   exists, followed by a call to coord.PerformTransaction,
+	 which will use RPC to attempt the transaction */
 func (ls *libstore) Transact(name storagerpc.TransactionType, data string) (storagerpc.TransactionStatus, error) {
 	switch name {
 	case storagerpc.CreateUser:
@@ -169,99 +174,4 @@ func (ls *libstore) Transact(name storagerpc.TransactionType, data string) (stor
 	case storagerpc.LeaveTeam:
 	case storagerpc.MakeTransaction:
 	}
-}
-
-func (ls *libstore) Put(key, value string) error {
-	args := &storagerpc.PutArgs{Key: key, Value: value}
-	var reply storagerpc.PutReply
-
-	ss := ls.findServerFromKey(key)
-
-	err := ls.client.Call("StorageServer.Put", args, &reply)
-	if err != nil {
-		ls.connections[ls.port] = nil
-		ls.connectToRandom()
-		return err
-	}
-
-	if reply.Status == storagerpc.OK {
-		return nil
-	}
-
-	return errors.New("RPC Put returned status: " + reply.Status)
-}
-
-func (ls *libstore) GetList(key string) ([]string, error) {
-	args := &storagerpc.GetArgs{Key: key}
-	var result storagerpc.GetListReply
-
-	err := ls.client.Call("StorageServer.GetList", args, &reply)
-	if err != nil {
-		ls.connections[ls.port] = nil
-		ls.connectToRandom()
-		return err
-	}
-
-	if reply.Status == storagerpc.OK {
-		return reply.Value, nil
-	}
-
-	return "", errors.New("RPC GetList returned status: " + reply.Status)
-}
-
-func (ls *libstore) AppendToList(key, newItem string) error {
-	list, err := ls.GetList(key)
-	if err != nil {
-		return err
-	} else if existsInList(newItem, list) {
-		return errors.New("Item exists in list")
-	}
-
-	args := &storagerpc.PutArgs{Key: key, Value: newItem}
-	var reply storagerpc.PutReply
-
-	err = ls.client.Call("StorageServer.AppendToList", args, &reply)
-	if err != nil {
-		ls.connections[ls.port] = nil
-		ls.connectToRandom()
-		return err
-	}
-
-	if reply.Status == storagerpc.OK {
-		return nil
-	}
-
-	return errors.New("RPC AppendToList returned status: " + reply.Status)
-}
-
-func (ls *libstore) RemoveFromList(key, removeItem string) error {
-	args := &storagerpc.PutArgs{Key: key, Value: removeItem}
-	var reply storagerpc.PutReply
-
-	list, err := ls.GetList(key)
-	if err != nil {
-		return err
-	}
-
-	if !existsInList(removeItem, list) {
-		return errors.New("Item to remove does not exists in list")
-	}
-
-	err = ls.client.Call("StorageServer.RemoveFromList", args, &reply)
-	if err != nil {
-		ls.connections[ls.port] = nil
-		ls.connectToRandom()
-		return err
-	}
-
-	return nil
-}
-
-func existsInList(item string, list []string) bool {
-	for i := 0; i < len(list); i++ {
-		if list[i] == item {
-			return true
-		}
-	}
-	return false
 }
