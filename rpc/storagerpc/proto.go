@@ -37,7 +37,7 @@ const (
 
 type TransactionStatus int
 const (
-	OK                   TransactionStatus = iota + 1 
+	TransactionOK                   TransactionStatus = iota + 1 
 	NoSuchUser                             
 	NoSuchTeam                             
 	NoSuchTicker                           
@@ -48,13 +48,13 @@ const (
 	PermissionDenied                       
 )
 
-type ExecuteTransactionArgs struct {
+type TransactionArgs struct {
 	TransactionId int
-	Type TransactionType
+	Method TransactionType
 	Data TransactionData
 }
 
-type ExecuteTransactionReply struct {
+type TransactionReply struct {
 	Status TransactionStatus
 	Error error
 }

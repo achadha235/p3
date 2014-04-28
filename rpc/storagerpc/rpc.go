@@ -1,13 +1,13 @@
 package storagerpc
 
-type MasterStorageServer interface {
+type RemoteMasterStorageServer interface {
 	RegisterServer(*RegisterServerArgs, *RegisterServerReply) error 
 	Propose(*ProposeArgs, *ProposeReply) error 
 }
 
-type CohortStorageServer interface {
+type RemoteCohortStorageServer interface { // This should be RemoteCohortServer
 	Prepare(*PrepareArgs, *PrepareReply) error 
+	ExecuteTransaction(*TransactionArgs, *TransactionReply) error // This should be defined by the application
 	Commit(*CommitArgs, *CommitReply) error 
 	Get(*GetArgs, *GetReply) error 
-	Execute(*ExecuteArgs, *ExecuteReply) error 
 }
