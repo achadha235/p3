@@ -1,8 +1,8 @@
 package stockserver
 
 import (
+	"achadha235/p3/datatypes"
 	"achadha235/p3/libstore"
-	"achadha235/p3/rpc/stockrpc"
 	"achadha235/p3/rpc/storagerpc"
 	"achadha235/p3/util"
 	"code.google.com/p/go.crypto/bcrypt"
@@ -11,20 +11,18 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"strconv"
 	"time"
 )
 
 const (
 	DefaultStartAmount = 10000000 // starting amount (in cents)
 	MaxNumberTeams     = 3        // maximum number of teams a user can be on
-	MaxNumberUsers     = 100      // max number of users on a team
+	MaxNumberUsers     = 1000     // max number of users on a team
 	MaxNumberHoldings  = 1000     // max number of holdings a user can have
 )
 
 type stockServer struct {
 	server     *rpc.Server
-	nodeID     int
 	ls         libstore.Libstore
 	sessionMap map[[]byte]string // map from sessionKey to userID for that session
 }
@@ -33,10 +31,10 @@ type stockServer struct {
 // masterHostPort is the coordinator's host:port and myHostPort is the
 // port that the StockServer should listen on for StockClient calls
 
-func NewStockServer(masterHostPort, myHostPort string, nodeID int) (stockServer, error) {
+func NewStockServer(masterHostPort, myHostPort string) (stockServer, error) {
 	s := rpc.NewServer()
 
-	ls, err := libstore.NewLibstore(masterHostPort, myHostPort, nodeID)
+	ls, err := libstore.NewLibstore(masterHostPort, myHostPort)
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +79,11 @@ func (ss *stockServer) LoginUser(args *LoginUserArgs, reply *LoginUserReply) err
 	// check if the user exists
 	encodedUser, err := ss.ls.Get(key)
 	if err != nil {
-		reply.Status = stockrpc.NoSuchUser
+		reply.Status = datatypes.NoSuchUser
 		return nil
 	}
 
-	var user stockrpc.User
+	var user datatypes.User
 	err = json.Unmarshal(encodedUser, user)
 	if err != nil {
 		return err
@@ -94,7 +92,7 @@ func (ss *stockServer) LoginUser(args *LoginUserArgs, reply *LoginUserReply) err
 	// check if user pw is correct
 	err = bcrypt.CompareHashAndPassword(user.hashPW, args.Password)
 	if err != nil {
-		reply.Status = stockrpc.PermissionDenied
+		reply.Status = datatypes.PermissionDenied
 		return nil
 	}
 
@@ -106,7 +104,7 @@ func (ss *stockServer) LoginUser(args *LoginUserArgs, reply *LoginUserReply) err
 	ss.sessionMap[sessionKey] = args.UserID
 
 	reply.SessionKey = sessionKey
-	reply.Status = stockrpc.OK
+	reply.Status = datatypes.OK
 	return nil
 }
 
@@ -116,18 +114,15 @@ func (ss *stockServer) CreateUser(args *CreateUserArgs, reply *CreateUserReply) 
 	hashed := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
 
 	// create user object
-	user := &stockrpc.User{
+	user := datatypes.User{
 		userID: args.UserID,
 		hashPW: hashed,
 		teams:  make([]string, 0, MaxNumberTeams),
 	}
 
-	encodedUser, err := json.Marshal(user)
-	if err != nil {
-		return err
-	}
+	data := &datatypes.DataArgs{user: user}
 
-	status, err = ss.ls.Transact(storagerpc.CreateUser, encodedUser)
+	status, err = ss.ls.Transact(datatypes.CreateUser, data)
 	if err != nil {
 		return err
 	}
@@ -141,31 +136,29 @@ func (ss *stockServer) CreateTeam(args *CreateTeamArgs, reply *CreateTeamReply) 
 	// lookup userID based on session
 	userID, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
-		reply.Status = stockrpc.NoSuchSession
+		reply.Status = datatypes.NoSuchSession
 		return nil
 	}
 
+	// Add user to the team he created
 	userList := make([]string, 0, MaxNumberUsers)
 	userList = append(userList, userID)
 
-	// create team pw
+	// Create team pw
 	hashed := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
 
-	team := &stockrpc.Team{
+	team := datatypes.Team{
 		teamID:   args.TeamID,
 		users:    userList,
 		hashPW:   hashed,
 		balance:  DefaultStartAmount,
-		holdings: make([]stockrpc.Holding, 0, MaxNumberHoldings),
+		holdings: make([]datatypes.Holding, 0, MaxNumberHoldings),
 	}
 
-	encodedTeam, err := json.Marshal(team)
-	if err != nil {
-		return err
-	}
+	data := &datatypes.DataArgs{team: team}
 
 	// Attempt to CreateTeam and return propogated status
-	status, err = ss.ls.Transact(storagerpc.CreateTeam, encodedTeam)
+	status, err = ss.ls.Transact(datatypes.CreateTeam, data)
 	if err != nil {
 		return err
 	}
@@ -179,19 +172,22 @@ func (ss *stockServer) JoinTeam(args *JoinTeamArgs, reply *JoinTeamReply) error 
 	// retrieve userID from session
 	userID, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
-		reply.Status = stockrpc.NoSuchSession
+		reply.Status = datatypes.NoSuchSession
 		return nil
 	}
 
 	// create argument for transaction JoinTeam
-	userArgs := &stockrpc.UserTeamData{userID: userID, teamID: args.TeamID}
-	data, err := json.Marshal(userArgs)
-	if err != nil {
-		return err
+	user := datatypes.User{userID: userID}
+	team := datatypes.User{teamID: args.TeamID}
+
+	data := &datatypes.DataArgs{
+		user: user,
+		team: team,
+		pw:   args.Password,
 	}
 
 	// attempt to perform transaction JoinTeam, propogate status reply
-	status, err = ss.ls.Transact(storagerpc.JoinTeam, data)
+	status, err = ss.ls.Transact(datatypes.JoinTeam, data)
 	if err != nil {
 		return err
 	}
@@ -205,15 +201,17 @@ func (ss *stockServer) LeaveTeam(args *LeaveTeamArgs, reply *LeaveTeamReply) err
 	// retrieve userID from session
 	userID, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
-		reply.Status = stockrpc.NoSuchSession
+		reply.Status = datatypes.NoSuchSession
 		return nil
 	}
 
 	// create args for LeaveTeam Transaction
-	args := &stockrpc.UserTeamData{userID: userID, teamID: args.TeamID}
-	data, err := json.Marshal(args)
-	if err != nil {
-		return err
+	user := datatypes.User{userID: userID}
+	team := datatypes.Team{teamID: args.TeamID}
+
+	data := &datatypes.DataArgs{
+		user: user,
+		team: team,
 	}
 
 	// attempt to remove user from team
@@ -230,13 +228,15 @@ func (ss *stockServer) MakeTransaction(args *MakeTransactionArgs, reply *MakeTra
 	// retrieve userID from session
 	userID, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
-		reply.Status = stockrpc.NoSuchSession
+		reply.Status = datatypes.NoSuchSession
 		return nil
 	}
 
-	data, err := json.Marshal(args.Requests)
-	if err != nil {
-		return err
+	user := datatypes.User{userID: userID}
+
+	data := &datatypes.DataArgs{
+		user:     user,
+		requests: args.Requests,
 	}
 
 	status, err := ss.ls.Transact(storagerpc.MakeTransaction, data)
@@ -246,114 +246,6 @@ func (ss *stockServer) MakeTransaction(args *MakeTransactionArgs, reply *MakeTra
 
 	reply.Status = status
 	return nil
-
-	/* THIS IS THE LOGIC FOR MAKING A BUY/SELL TRANSACTION /*
-
-
-	   /*	// check if team exists
-	   	teamKey := util.CreateTeamKey(args.TeamID)
-	   	teamList, err = ss.ls.GetList(teamKey)
-	   	if err != nil {
-	   		reply.Status = stockrpc.NoSuchTeam
-	   		return nil
-	   	}
-
-	   	// check if ticker exists/get current price
-	   	tickerKey := util.CreateTickerKey(args.Ticker)
-	   	priceStr, err := ss.ls.Get(tickerKey)
-	   	if err != nil {
-	   		reply.Status = stockrpc.NoSuchTicker
-	   		return nil
-	   	}
-
-	   	sharePrice := strconv.ParseUint(priceStr, 10, 64)
-	   	// check if user is on team
-	   	for i := 0; i < len(teamList); i++ {
-	   		if teamList[i] == userID {
-	   			break
-	   		}
-
-	   		// if user not found, then deny permission
-	   		if i == len(teamList)-1 {
-	   			reply.Status = stockrpc.PermissionDenied
-	   			return nil
-	   		}
-
-	   		continue
-	   	}
-
-	   	// get team balance and perform update
-	   	balanceKey := util.CreateTeamBalanceKey(args.TeamID)
-	   	balance, err = ss.ls.GetList(balanceKey)
-	   	if err != nil {
-	   		reply.Status = stockrpc.PermissionDenied
-	   		return nil
-	   	}
-
-	   	// get quantity of current holding
-	   	holdingKey := util.CreateTeamHoldingKey(args.TeamID, args.Ticker)
-	   	holdObj, err := ss.ls.Get(holdingKey)
-
-	   	var holding stockrpc.Holding
-
-	   	if err != nil {
-	   		// if not found, then team has 0 shares
-	   		amt := 0
-	   	} else {
-	   		err = json.Unmarshal(data, &holding)
-	   		if err != nil {
-	   			return err
-	   		}
-
-	   		amt := holding.quantity
-	   	}
-
-	   	newBalance := 0 // placeholder
-	   	if args.Action == "buy" {
-	   		// BUY TRANSACTION
-	   		cost := args.Quantity * sharePrice
-	   		if balance-cost < 0 {
-	   			reply.Status = stockrpc.InsufficientQuantity
-	   			return nil
-	   		}
-
-	   		amt += args.Quantity
-	   		newBalance = balance - cost
-	   	} else if args.Action == "sell" {
-	   		// SELL TRANSACTION
-	   		profit := args.Quantity * sharePrice
-	   		// not enough shares to sell
-	   		if amt < args.Quantity {
-	   			reply.Status = stockrpc.InsufficientQuantity
-	   			return nil
-	   		}
-
-	   		newBalance = balance + profit
-	   		amt -= args.Quantity
-	   	}
-
-	   	// update balance
-	   	err = ss.ls.Put(balanceKey, strconv.FormatUint(newBalance, 10))
-	   	if err != nil {
-	   		reply.Status = stockrpc.PermissionDenied
-	   		return nil
-	   	}
-
-	   	// update holding
-	   	updatedHolding := &stockrpc.Holding{ticker: args.Ticker, quantity: amt, acquired: time.Now()}
-	   	jsonHolding, err := json.Marshal(updatedHolding)
-	   	if err != nil {
-	   		return err
-	   	}
-
-	   	err = ss.ls.Put(holdingKey, jsonHolding)
-	   	if err != nil {
-	   		reply.Status = stockrpc.PermissionDenied
-	   		return nil
-	   	}
-
-	   	reply.Status = stockrpc.OK
-	   	return nil*/
 }
 
 func (ss *stockServer) GetPortfolio(args *GetPortfolioArgs, reply *GetPortfolioReply) error {
@@ -400,11 +292,11 @@ func (ss *stockServer) GetPrice(args *GetPriceArgs, reply *GetPriceReply) error 
 	tickerKey := util.CreateTickerKey(args.Ticker)
 	tickerData, err := ss.ls.Get(tickerKey)
 	if err != nil {
-		reply.Status = stockrpc.NoSuchTicker
+		reply.Status = datatypes.NoSuchTicker
 		return nil
 	}
 
-	var ticker stockrpc.Ticker
+	var ticker datatypes.Ticker
 	err = json.Unmarshal(tickerData, &ticker)
 	if err != nil {
 		log.Println("Unable to unmarshal Ticker: ", err)
@@ -412,7 +304,7 @@ func (ss *stockServer) GetPrice(args *GetPriceArgs, reply *GetPriceReply) error 
 	}
 
 	reply.Price = ticker.price
-	reply.Status = stockrpc.OK
+	reply.Status = datatypes.OK
 
 	return nil
 }

@@ -2,7 +2,7 @@ package libstore
 
 import (
 	"achadha235/p3/coordinator"
-	"achadha235/p3/rpc/stockrpc"
+	"achadha235/p3/datatypes"
 	"achadha235/p3/rpc/storagerpc"
 	"achadha235/p3/util"
 	"net/rpc"
@@ -12,32 +12,9 @@ import (
 type libstore struct {
 	client               *rpc.Client            // MasterStorageServer connection
 	connections          map[string]*rpc.Client // hostport --> RPC connection to host
-	coord                coordinator
+	coord                coordinator.Coordinator
 	storageServers       []storagerpc.Node
 	masterServerHostPort string // host+port of MasterStorageServer
-}
-
-func (ls *libstore) findServerFromKey(key string) *storagerpc.Node {
-	if ls.storageServers == nil || len(ls.storageServers) == 0 {
-		return nil
-	}
-
-	hashed := StoreHash(strings.Split(key, ":")[0])
-
-	current := ls.storageServers[0]
-	for i := 0; i < len(ls.storageServers); i++ {
-		current := ls.storageServers[i]
-		if hashed <= current.NodeID {
-			return &current
-		}
-	}
-	// current should be last
-	if hashed > current.NodeID {
-		return &ls.storageServers[0]
-	}
-
-	// not found
-	return nil
 }
 
 func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
@@ -50,12 +27,19 @@ func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
 		return nil, err
 	}
 
+	// launch the coordinator
+	coord, err := coordinator.StartCoordinator(masterServerHostPort)
+	if err != nil {
+		return nil, err
+	}
+
 	connectionsMap := make(map[string]*rpc.Client)
 	connectionsMap[masterServerHostPort] = client
 
 	ls := &libstore{
 		client:               client,
 		connections:          connectionsMap,
+		coord:                coord,
 		storageServers:       nil,
 		masterServerHostPort: masterServerHostPort,
 	}
@@ -64,9 +48,9 @@ func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
 	var reply storagerpc.GetServersReply
 
 	// attempt to get the list of servers in the ring from the MasterStorageServers
-	for i := 0; i < MaxConnectAttempts; i++ {
+	for i := 0; i < util.MaxConnectAttempts; i++ {
 		ls.connections[masterServerHostPort].Call("StorageServer.GetServers", args, reply)
-		if reply.Status != storagerpc.OK {
+		if reply.Status != datatypes.OK {
 			time.Sleep(time.Second)
 			continue
 		} else {
@@ -77,14 +61,14 @@ func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
 
 	// connect to each of the storageServers when we acquire the list
 	for i := 0; i < len(ls.storageServers); i++ {
-		hostport := newLibstore.storageServers[i].HostPort
+		hostport := ls.storageServers[i].HostPort
 		if hostport != masterServerHostPort { // Dont dial the master twice
-			cli, err := tryDial(hostport)
+			cli, err := util.TryDial(hostport)
 			if err != nil {
 				return nil, err
 			}
 
-			newLibstore.connections[hostport] = cli
+			ls.connections[hostport] = cli
 		}
 	}
 
@@ -99,79 +83,90 @@ Here we want to perform some basic checks outside of 2PC such as
 	cases like a balance going invalid should be handled in the 2PC
 */
 
-func (ls *libstore) Get(key string) (string, error) {
+func (ls *libstore) Get(key string) (string, datatypes.Status, error) {
 	args := &storagerpc.GetArgs{Key: key}
 	var reply storagerpc.GetReply
 
-	ss := ls.findServerFromKey(key)
+	ss := util.FindServerFromKey(key, ls.storageServers)
 
 	err := ls.connections[ss.HostPort].Call("StorageServer.Get", args, &reply)
 	if err != nil {
-		return "", err
+		return "", datatypes.BadData, err
 	}
 
-	if reply.Status == storagerpc.OK {
-		return reply.Value, nil
+	if reply.Status == datatypes.OK {
+		return reply.Value, datatypes.OK, nil
 	}
 
-	return "", errors.New("RPC Get returned status: " + reply.Status)
-}
-
-func (ls *libstore) Put(key, value string) error {
-	args := &storagerpc.PutArgs{Key: key, Value: value}
-	var reply storagerpc.PutReply
-
-	ss := ls.findServerFromKey(key)
-
-	err := ls.client.Call("StorageServer.Put", args, &reply)
-	if err != nil {
-		ls.connections[ls.port] = nil
-		ls.connectToRandom()
-		return err
-	}
-
-	if reply.Status == storagerpc.OK {
-		return nil
-	}
-
-	return errors.New("RPC Put returned status: " + reply.Status)
+	return "", reply.Status, nil
 }
 
 /* Transact performs basic checks such as whether a user/team
    exists, followed by a call to coord.PerformTransaction,
 	 which will use RPC to attempt the transaction */
-func (ls *libstore) Transact(name storagerpc.TransactionType, data string) (storagerpc.TransactionStatus, error) {
+func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.DataArgs) (datatypes.Status, error) {
 	switch name {
-	case storagerpc.CreateUser:
-		var user stockrpc.User
-		err := json.Unmarshal(data, &user)
-		if err != nil {
-			return 0, err
+	case datatypes.CreateUser:
+		// Check if user exists
+		if ls.checkExists(data.User.UserID) {
+			return datatypes.Exists, nil
 		}
 
-		// check if user exists
-		_, err = ls.Get(user.userID)
-		if err != nil {
-			return stockrpc.Exists, nil
+		// Coordinator does rest
+		status, err := ls.coord.PerformTransaction(name, *data)
+		return status, err
+
+	case datatypes.CreateTeam:
+		// Check if team exists
+		if ls.checkExists(data.Team.TeamID) {
+			return datatypes.Exists, nil
 		}
 
-		return stockrpc.OK, nil
+		// Coordinator does rest
+		status, err := ls.coord.PerformTransaction(name, *data)
+		return status, err
 
-	case storagerpc.CreateTeam:
-		var team stockrpc.Team
-		err := json.Unmarshal(data, &team)
-		if err != nil {
-			return 0, err
+	// Check if user and team exists for both JoinTeam/LeaveTeam
+	case datatypes.JoinTeam:
+	case datatypes.LeaveTeam:
+		if !ls.checkExists(data.User.UserID) {
+			return datatypes.NoSuchUser, nil
+		} else if !ls.checkExists(data.Team.TeamID) {
+			return datatypes.NoSuchTeam, nil
 		}
 
-		// check if team exists
-		_, err = ls.Get(team.teamID)
-		if err != nil {
-			return stockrpc.Exists, nil
+		status, err := ls.coord.PerformTransaction(name, *data)
+		return status, err
+
+	case datatypes.MakeTransaction:
+		for i := 0; i < len(data.Requests); i++ {
+			// non-OK status then leg of transaction is invalid so cancel all
+			if stat := ls.checkRequest(data.Requests[i]); stat != datatypes.OK {
+				return stat, nil
+			}
 		}
 
-	case storagerpc.JoinTeam:
-	case storagerpc.LeaveTeam:
-	case storagerpc.MakeTransaction:
+		status, err := ls.coord.PerformTransaction(name, *data)
+		return status, err
 	}
+
+	return datatypes.NoSuchAction, nil
+}
+
+// return non-OK status if the team or ticker in the request are invalid
+func (ls *libstore) checkRequest(req datatypes.Request) datatypes.Status {
+	if !ls.checkExists(req.TeamID) {
+		return datatypes.NoSuchTeam
+	} else if !ls.checkExists(req.Ticker) {
+		return datatypes.NoSuchTicker
+	}
+
+	return datatypes.OK
+}
+
+// return true if the key (id) exists
+func (ls *libstore) checkExists(id string) bool {
+	_, status, _ := ls.Get(id)
+	// if status is OK then the id was found on the node
+	return status == datatypes.OK
 }

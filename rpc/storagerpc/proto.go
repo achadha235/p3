@@ -1,10 +1,9 @@
 package storagerpc
 
 import (
+	"achadha235/p3/datatypes"
 	"net/rpc"
 )
-
-type Status int
 
 const (
 	NotReady = iota
@@ -19,7 +18,7 @@ const (
 )
 
 type Node struct {
-	NodeId   int
+	NodeId   uint32
 	HostPort string
 	Master   bool
 	Client   *rpc.Client
@@ -33,21 +32,6 @@ const (
 	JoinTeam
 	LeaveTeam
 	MakeTransaction
-	BuyCompany
-)
-
-type TransactionStatus int
-
-const (
-	TransactionOK TransactionStatus = iota + 1
-	NoSuchUser
-	NoSuchTeam
-	NoSuchTicker
-	NoSuchAction
-	NoSuchSession
-	InsufficientQuantity
-	Exists
-	PermissionDenied
 )
 
 type TransactionArgs struct {
@@ -57,7 +41,7 @@ type TransactionArgs struct {
 }
 
 type TransactionReply struct {
-	Status TransactionStatus
+	Status datatypes.Status
 	Error  error
 }
 
@@ -83,7 +67,7 @@ type GetServersArgs struct {
 }
 
 type GetServersReply struct {
-	Status  Status
+	Status  datatypes.Status
 	Servers []Node
 }
 
@@ -94,17 +78,17 @@ type ProposeArgs struct {
 }
 
 type ProposeReply struct {
-	Status Status
+	Status datatypes.Status
 }
 
 type PrepareArgs struct {
 	TransactionId int
-	Key           string
-	Value         string
+	Name          datatypes.OperationType
+	Data          datatypes.DataArgs
 }
 
 type PrepareReply struct {
-	Status Status
+	Status datatypes.Status
 }
 
 type CommitArgs struct {
@@ -120,8 +104,9 @@ type GetArgs struct {
 }
 
 type GetReply struct {
-	Key   string
-	Value string
+	Key    string
+	Value  string
+	Status datatypes.Status
 }
 
 type PutArgs struct {

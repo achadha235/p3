@@ -21,7 +21,7 @@ const (
 	InsufficientQuantity                   // Desired action cannot be fulfilled; lack of money/shares
 	Exists                                 // User/team already exists or user is already on team
 	PermissionDenied                       // User does not have permission to do the task
-	BadData                                // Data is not properly stored or is corrupted
+	BadData                                // Data is not properly stored or system is corrupted
 )
 
 const (
@@ -45,41 +45,41 @@ const (
 
 // struct used to represent the possession of shares of a stock for teams
 type Holding struct {
-	ticker   string
-	quantity uint64
-	acquired time.Time
+	Ticker   string
+	Quantity uint64
+	Acquired time.Time
 }
 
 // request structure for a single action (buy/sell in v0)
 type Request struct {
-	action, teamID, ticker string
-	quantity               int
+	Action, TeamID, Ticker string
+	Quantity               int
 }
 
 // struct used to represent a user
 type User struct {
-	userID string
-	hashPW string   // hashed PW
-	teams  []string // list of team IDs that the user is on
+	UserID string
+	HashPW string   // hashed PW
+	Teams  []string // list of team IDs that the user is on
 }
 
 // struct used to represent a team
 type Team struct {
-	teamID   string
-	users    []string  // list of userIDs of users that are on the team
-	hashPW   string    // hashed PW
-	balance  uint64    // balance in cents
-	holdings []Holding // list of holding IDs
+	TeamID   string
+	Users    []string  // list of userIDs of users that are on the team
+	HashPW   string    // hashed PW
+	Balance  uint64    // balance in cents
+	Holdings []Holding // list of holding IDs
 }
 
 type Ticker struct {
-	price uint64
+	Price uint64
 }
 
 // Arguments for the RPC call for operations on CohortServers
 type DataArgs struct {
-	user     User
-	team     Team
-	pw       string
-	requests []Request
+	User     User
+	Team     Team
+	Pw       string
+	Requests []Request
 }

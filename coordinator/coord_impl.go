@@ -1,18 +1,13 @@
 package coordinator
 
 import (
+	"achadha235/p3/datatypes"
 	"achadha235/p3/rpc/storagerpc"
 	"achadha235/p3/util"
-	"errors"
-	"log"
-	"net"
-	"net/http"
+	/*	"errors"*/
+	/*	"log"*/
 	"net/rpc"
 	"time"
-)
-
-const (
-	MaxConnectAttempts = 5
 )
 
 /*
@@ -25,19 +20,13 @@ Implementation Plan:
 type coordinator struct {
 	masterStorageServer *rpc.Client            // RPC connection to masterStorage
 	servers             []storagerpc.Node      // slice of storage servers
-	nextTransactionIds  map[string]int         // [hostport] --> next TransactionID for that StorageServer
 	connections         map[string]*rpc.Client // [hostport] --> client conn
+	nextTransactionId   int
 	nextCommitId        int
-	/*	client            chan int*/
-	/*	self              storagerpc.Node*/
-	/*	requestNodeId     chan chan int*/
-	/*	proposeChannel    chan proposeRequest*/
 }
 
-type proposeRequest struct {
-	args  *storagerpc.ProposeArgs
-	reply chan error
-}
+// [hostport] --> slice of prepareArgs for operations that the node must execute
+type PrepareMap map[string][]*storagerpc.PrepareArgs
 
 func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 	cli, err := util.TryDial(masterServerHostPort)
@@ -50,10 +39,10 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 
 	// attempt to get the list of servers in the ring from the MasterStorageServer
 	var servers []storagerpc.Node
-	for t := MaxConnectAttempts; ; t-- {
+	for t := util.MaxConnectAttempts; ; t-- {
 		err := cli.Call("StorageServer.GetServers", args, reply)
-		if reply.Status == storagerpc.OK {
-			servers := reply.Servers
+		if reply.Status == datatypes.OK {
+			servers = reply.Servers
 			break
 		} else if t <= 0 {
 			// StorageServers not ready
@@ -67,28 +56,14 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 	conns := make(map[string]*rpc.Client)
 	conns[masterServerHostPort] = cli
 
-	// create and init unique Ids for every node in the ring
-	nextIds := make(map[string]int)
-	for i := 0; i < len(servers); i++ {
-		nextIds[servers[i].HostPort] = 1
-	}
-
 	// create the coordinator
 	coord := &coordinator{
 		masterStorageServer: cli,
 		servers:             servers,
-		nextTransactionIds:  nextIds,
 		connections:         conns,
+		nextTransactionId:   1,
 		nextCommitId:        1,
 	}
-
-	rpc.RegisterName("Coordinator", coord)
-	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", ":3000")
-	if e != nil {
-		log.Fatalln("listen error:", e)
-	}
-	go http.Serve(l, nil)
 
 	return coord, nil
 }
@@ -96,73 +71,172 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 /* PerformTransaction will break apart a transaction and
    send the appropriate updates to each corresponding
    StorageServer using a 2PC propose call */
-func (coord *coordinator) PerformTransaction(name storagerpc.TransactionType, data string) (storagerpc.TransactionStatus, error) {
+func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, data datatypes.DataArgs) (datatypes.Status, error) {
+	prepareMap := make(PrepareMap)
+
 	switch name {
-	// TODO: use data to break up route appropriately
-	case storagerpc.CreateUser:
-	case storagerpc.CreateTeam:
-	case storagerpc.JoinTeam:
-	case storagerpc.LeaveTeam:
-	case storagerpc.MakeTransaction:
+	// Add user data on node
+	case datatypes.CreateUser:
+		args := &storagerpc.PrepareArgs{
+			TransactionId: coord.nextTransactionId,
+			Name:          datatypes.AddUser,
+			Data:          data,
+		}
+
+		ss := util.FindServerFromKey(data.User.UserID, coord.servers)
+		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
+
+	// Add team data on node
+	case datatypes.CreateTeam:
+		args := &storagerpc.PrepareArgs{
+			TransactionId: coord.nextTransactionId,
+			Name:          datatypes.AddTeam,
+			Data:          data,
+		}
+
+		ss := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
+
+	// Add user data to team list and vice-versa for the respective nodes
+	case datatypes.JoinTeam:
+		// create args for call to node with team info and update prepareMap
+		teamArgs := &storagerpc.PrepareArgs{
+			TransactionId: coord.nextTransactionId,
+			Name:          datatypes.AddUserToTeamList,
+			Data:          data,
+		}
+
+		ssTeam := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
+
+		// create args for call to node with user info and update prepareMap
+		userArgs := &storagerpc.PrepareArgs{
+			TransactionId: coord.nextTransactionId,
+			Name:          datatypes.AddTeamToUserList,
+			Data:          data,
+		}
+
+		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
+		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
+
+	// Remove user data from team list and vice-versa for the respective nodes
+	case datatypes.LeaveTeam:
+		teamArgs := &storagerpc.PrepareArgs{
+			TransactionId: coord.nextTransactionId,
+			Name:          datatypes.RemoveUserFromTeamList,
+			Data:          data,
+		}
+
+		ssTeam := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
+
+		userArgs := &storagerpc.PrepareArgs{
+			TransactionId: coord.nextTransactionId,
+			Name:          datatypes.RemoveTeamFromUserList,
+			Data:          data,
+		}
+
+		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
+		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
+
+	case datatypes.MakeTransaction:
+		var op datatypes.OperationType
+		for i := 0; i < len(data.Requests); i++ {
+			// Pull and create args for one request at a time
+			req := data.Requests[i]
+			if req.Action == "buy" {
+				op = datatypes.Buy
+			} else if req.Action == "sell" {
+				op = datatypes.Sell
+			} else {
+				return datatypes.NoSuchAction, nil
+			}
+
+			// prepare args for individual buy/sell operation
+			reqSlice := make([]datatypes.Request, 0)
+			reqSlice = append(reqSlice, req)
+			reqData := datatypes.DataArgs{
+				User:     data.User,
+				Requests: reqSlice,
+			}
+
+			teamArgs := &storagerpc.PrepareArgs{
+				TransactionId: coord.nextTransactionId,
+				Name:          op,
+				Data:          reqData,
+			}
+
+			ss := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+			prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], teamArgs)
+		}
+	default:
+		return datatypes.NoSuchAction, nil
 	}
 
-	return 0, errors.New("No such method name")
+	stat, err := coord.Propose(prepareMap)
+	coord.nextTransactionId++
+
+	return stat, err
 }
 
-/*func (coord *coordinator) Propose(args *storagerpc.ProposeArgs, reply *storagerpc.ProposeReply) error {*/
-
-/* callName: Get/Put/Execute
- * data: JSON-marshaled obj for use with callName */
-func (coord *coordinator) Propose(transactionId int, callName, data string) (storagerpc.Status, error) {
+// Propose receives a map of [hostport] --> [prepareArgs] for that node to execute
+// and makes async RPC calls to involved nodes to Prepare for 2PC
+func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, error) {
 	// Prepare for transaction
-	hostport := ""
-	tArgs := &storagerpc.PrepareArgs{
-		// Not correct right now placeholder
-		TransactionId: coord.nextTransactionIds[hostport],
-		Key:           callName,
-		Value:         data,
-	}
-
-	coord.nextTransactionIds[hostport]++
 
 	stat := storagerpc.CommitStatus(storagerpc.Commit)
-	var err error
-	resultStatus := storagerpc.OK
+	resultStatus := datatypes.OK
 
 	// channel to receive async replies from CohortServers
 	doneCh := make(chan *rpc.Call, len(coord.servers))
 
 	// send out Prepare call to all nodes
-	for i := 0; i < len(coord.servers); i++ {
-		var reply *storagerpc.PrepareReply
-		coord.servers[i].Client.Go("CohortStorageServer.Prepare", tArgs, &reply, doneCh)
+	responsesToExpect := 0
+	for hostport, argsList := range prepareMap {
+		if _, ok := coord.connections[hostport]; !ok {
+			cli, err := util.TryDial(hostport)
+			if err != nil {
+				return datatypes.BadData, err
+			}
+
+			coord.connections[hostport] = cli
+		}
+
+		for i := 0; i < len(argsList); i++ {
+			prepareArgs := argsList[i]
+			var prepareReply *storagerpc.PrepareReply
+			coord.connections[hostport].Go("CohortStorageServer.Prepare", prepareArgs, &prepareReply, doneCh)
+			responsesToExpect++
+		}
 	}
 
 	// receive replies from prepare
-	for i := 0; i < len(coord.servers); i++ {
+	for i := 0; i < responsesToExpect; i++ {
 		rpcReply := <-doneCh
 
 		// if RPC fails or non-OK status then Rollback
-		replyStatus := rpcReply.Reply.(*storagerpc.ProposeReply).Status
-		if rpcReply.Error != nil || replyStatus != storagerpc.OK {
-			resultStatus := replyStatus
+		replyStatus := rpcReply.Reply.(*storagerpc.PrepareReply).Status
+		if rpcReply.Error != nil || replyStatus != datatypes.OK {
+			resultStatus = replyStatus
 			stat = storagerpc.Rollback
 		}
 	}
 
 	// send the Commit call to all nodes with the updated status
-	for _, node := range coord.servers {
-		commitArgs := &storagerpc.CommitArgs{
-			TransactionId: tArgs.TransactionId,
-			Status:        stat,
-		}
+	for hostport, args := range prepareMap {
+		for i := 0; i < len(prepareMap[hostport]); i++ {
+			commitArgs := &storagerpc.CommitArgs{
+				TransactionId: args[i].TransactionId,
+				Status:        stat,
+			}
 
-		var commitReply *storagerpc.CommitReply
-		node.Client.Go("CohortStorageServer.Commit", commitArgs, &commitReply, doneCh)
+			var commitReply *storagerpc.CommitReply
+			coord.connections[hostport].Go("CohortStorageServer.Commit", commitArgs, &commitReply, doneCh)
+		}
 	}
 
 	// receive Ack from all nodes
-	for i := 0; i < len(coord.servers); i++ {
+	for i := 0; i < responsesToExpect; i++ {
 		rpcReply := <-doneCh
 
 		// TODO: if RPC fails then retry sending message until all received (?)
@@ -170,5 +244,5 @@ func (coord *coordinator) Propose(transactionId int, callName, data string) (sto
 			return 0, rpcReply.Error
 		}
 	}
-	return storagerpc.Status(resultStatus), nil
+	return datatypes.Status(resultStatus), nil
 }
