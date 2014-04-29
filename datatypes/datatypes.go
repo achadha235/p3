@@ -9,14 +9,7 @@ import (
 // Status represents status of an RPC's reply
 type Status int
 type TransactionType int
-
-const (
-	CreateUser TransactionType = iota + 1
-	CreateTeam
-	JoinTeam
-	LeaveTeam
-	MakeTransaction
-)
+type OperationType int
 
 const (
 	OK                   Status = iota + 1 // Action was successful
@@ -29,6 +22,25 @@ const (
 	Exists                                 // User/team already exists or user is already on team
 	PermissionDenied                       // User does not have permission to do the task
 	BadData                                // Data is not properly stored or is corrupted
+)
+
+const (
+	CreateUser TransactionType = iota + 1
+	CreateTeam
+	JoinTeam
+	LeaveTeam
+	MakeTransaction
+)
+
+const (
+	AddUser OperationType = iota + 1
+	AddTeam
+	AddUserToTeamList
+	AddTeamToUserList
+	RemoveUserFromTeamList
+	RemoveTeamFromUserList
+	Buy
+	Sell
 )
 
 // struct used to represent the possession of shares of a stock for teams
@@ -58,4 +70,16 @@ type Team struct {
 	hashPW   string    // hashed PW
 	balance  uint64    // balance in cents
 	holdings []Holding // list of holding IDs
+}
+
+type Ticker struct {
+	price uint64
+}
+
+// Arguments for the RPC call for operations on CohortServers
+type DataArgs struct {
+	user     User
+	team     Team
+	pw       string
+	requests []Request
 }
