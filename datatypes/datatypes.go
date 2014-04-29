@@ -8,6 +8,15 @@ import (
 
 // Status represents status of an RPC's reply
 type Status int
+type TransactionType int
+
+const (
+	CreateUser TransactionType = iota + 1
+	CreateTeam
+	JoinTeam
+	LeaveTeam
+	MakeTransaction
+)
 
 const (
 	OK                   Status = iota + 1 // Action was successful
