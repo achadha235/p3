@@ -1,4 +1,4 @@
-package main
+package cohort
 
 import (
 	"log"
@@ -29,13 +29,13 @@ type cohortStorageServer struct {
 	redoLog map[int]storagerpc.LogEntry // TransactionId to Store 1. Key 2. TransactionID. (New)Value
 }
 
-func main() {
-	fmt.Println("Hello world ");
-	fmt.Println(storagerpc.Commit)
-	ss, err := NewCohortServer("localhost:3000", "localhost:4000", 15, 1)
+// func main() {
+// 	fmt.Println("Hello world ");
+// 	fmt.Println(storagerpc.Commit)
+// 	ss, err := NewCohortServer("localhost:3000", "localhost:4000", 15, 1)
 
-	fmt.Println(ss, err)
-}
+// 	fmt.Println(ss, err)
+// }
 
 func NewCohortServer (masterHostPort string, selfHostPort string, nodeId int, numNodes int) (storagerpc.RemoteCohortServer, error) {
 	ss := new(cohortStorageServer)
@@ -82,18 +82,18 @@ func (ss *cohortStorageServer) SetTickers(){
 	
 func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
 	if commitReq.args.Status == storagerpc.Commit {
-		log, exists := ss.redoLog[commitReq.args.TransactionId]
+		commitLog, exists := ss.redoLog[commitReq.args.TransactionId]
 	} else { 
-		log, exists := ss.undoLog[commitReq.args.TransactionId]
+		commitLog, exists := ss.undoLog[commitReq.args.TransactionId]
 	}
 	if !exists {
 		return error.New("Commit without prepare not possible")
 	}
-	for i := 0; i < len(log.Ops){
-		mtx := ss.getOrCreateRWMutex(log.Key)
+	for i := 0; i < len(commitLog.Ops){
+		mtx := ss.getOrCreateRWMutex(commitLog.Key)
 		mtx.Lock()
-		ss.storage[log.Key] = log.Value
-		mtx.Lock()
+		ss.storage[commitLog.Key] = commitLog.Value
+		mtx.Unlock()
 	}
 	return nil
 }
@@ -364,8 +364,8 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 	case op == datatypes.Sell:
 		undoKvp := make([]KeyValuePair, 1)
 		redoKvp := make([]KeyValuePair, 1)
-
 		// Sell can update Holdings, Team 
+		// Check if enough stock
 
 
 
