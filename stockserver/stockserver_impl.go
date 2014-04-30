@@ -78,6 +78,7 @@ func (ss *stockServer) LoginUser(args *stockrpc.LoginUserArgs, reply *stockrpc.L
 	// check if the user exists
 	encodedUser, status, err := ss.ls.Get(key)
 	if err != nil {
+		log.Println("Get err on user login: ", err)
 		reply.Status = datatypes.BadData
 		return nil
 	} else if status != storagerpc.OK {
@@ -86,8 +87,9 @@ func (ss *stockServer) LoginUser(args *stockrpc.LoginUserArgs, reply *stockrpc.L
 	}
 
 	var user datatypes.User
-	err = json.Unmarshal([]byte(encodedUser), user)
+	err = json.Unmarshal([]byte(encodedUser), &user)
 	if err != nil {
+		log.Println("fail to unmarshal: ", err)
 		reply.Status = datatypes.BadData
 		return nil
 	}
@@ -103,6 +105,8 @@ func (ss *stockServer) LoginUser(args *stockrpc.LoginUserArgs, reply *stockrpc.L
 	sessionID := args.UserID + time.Now().String()
 	sessionKey, err := bcrypt.GenerateFromPassword([]byte(sessionID), bcrypt.DefaultCost)
 	if err != nil {
+		log.Println("bad session data", err)
+
 		reply.Status = datatypes.BadData
 		return nil
 	}

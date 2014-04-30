@@ -14,7 +14,6 @@ const (
 
 // return the appropriate node to use for the RPC request to the hashing ring
 func FindServerFromKey(key string, servers []storagerpc.Node) *storagerpc.Node {
-	fmt.Println("servers: ", servers)
 	if servers == nil || len(servers) == 0 {
 		return nil
 	} else if len(servers) == 1 {

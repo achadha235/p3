@@ -32,8 +32,6 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 	var servers []storagerpc.Node
 	for t := util.MaxConnectAttempts; ; t-- {
 		err := cli.Call("CohortStorageServer.GetServers", args, &reply)
-		log.Println("status: ", reply.Status)
-		log.Println("Ok status: ", storagerpc.OK)
 		if reply.Status == storagerpc.OK {
 			servers = reply.Servers
 			break
@@ -77,7 +75,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		}
 
 		ss := util.FindServerFromKey(data.User.UserID, coord.servers)
-		log.Println("ss: ", ss)
 		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
 
 		coord.nextOperationId++

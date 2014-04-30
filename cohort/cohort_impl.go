@@ -243,7 +243,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			reply.Status = datatypes.Exists
 			return nil
 		} else {
-			newB, err := json.Marshal(args.Data.User)
+			newB, err := json.Marshal(&args.Data.User)
 			if err != nil {
 				reply.Status = datatypes.BadData
 				return nil
