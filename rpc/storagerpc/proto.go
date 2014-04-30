@@ -50,10 +50,14 @@ type TransactionData struct {
 	jsonString string
 }
 
+type KeyValuePair {
+	Key string
+	Value string
+}
+
 type LogEntry struct {
 	TransactionId int
-	Key           string
-	Value         string
+	Logs []KeyValuePair
 }
 
 type RegisterServerArgs struct {
@@ -72,15 +76,6 @@ type GetServersReply struct {
 	Servers []Node
 }
 
-type ProposeArgs struct {
-	TransactionId int
-	CallName      string // Method Name
-	Data          string // json-marshaled string of data for the requested call
-}
-
-type ProposeReply struct {
-	Status datatypes.Status
-}
 
 type PrepareArgs struct {
 	TransactionId int
