@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/rpc"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -640,6 +642,16 @@ func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.G
 	reply.Key = args.Key
 
 	lock.RLock()
+	parts := strings.Split(args.Key, "-")
+	if parts[0] == "ticker" {
+		val, exists := ss.tickers[parts[1]]
+		if !exists {
+			reply.StorageStatus = storagerpc.KeyNotFound
+		} else {
+			reply.Value = strconv.FormatUint(val, 10)
+			reply.StorageStatus = storagerpc.OK
+		}
+	}
 	value, exists := ss.storage[args.Key]
 	reply.Value = value
 	if !exists {
@@ -665,9 +677,6 @@ func (ss *cohortStorageServer) getOrCreateRWMutex(key string) *sync.RWMutex {
 }
 
 func (ss *cohortStorageServer) GetServers(args *storagerpc.GetServersArgs, reply *storagerpc.GetServersReply) error {
-	log.Println("Entered GetServers")
-	defer log.Println("Exiting GetServers")
-	log.Println("Current servers: ", ss.servers)
 	if len(ss.servers) < ss.numNodes {
 		log.Println("Not ready")
 		reply.Status = storagerpc.NotReady

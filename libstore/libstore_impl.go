@@ -116,7 +116,7 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 	switch name {
 	case datatypes.CreateUser:
 		// Check if user exists
-		if ls.checkExists(data.User.UserID) {
+		if ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.Exists, nil
 		}
 
@@ -126,7 +126,7 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 
 	case datatypes.CreateTeam:
 		// Check if team exists
-		if ls.checkExists(data.Team.TeamID) {
+		if ls.checkExists("team-" + data.Team.TeamID) {
 			return datatypes.Exists, nil
 		}
 
@@ -137,9 +137,9 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 	// Check if user and team exists for both JoinTeam/LeaveTeam
 	case datatypes.JoinTeam:
 	case datatypes.LeaveTeam:
-		if !ls.checkExists(data.User.UserID) {
+		if !ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.NoSuchUser, nil
-		} else if !ls.checkExists(data.Team.TeamID) {
+		} else if !ls.checkExists("team- " + data.Team.TeamID) {
 			return datatypes.NoSuchTeam, nil
 		}
 
@@ -163,9 +163,9 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 
 // return non-OK status if the team or ticker in the request are invalid
 func (ls *libstore) checkRequest(req datatypes.Request) datatypes.Status {
-	if !ls.checkExists(req.TeamID) {
+	if !ls.checkExists("team-" + req.TeamID) {
 		return datatypes.NoSuchTeam
-	} else if !ls.checkExists(req.Ticker) {
+	} else if !ls.checkExists("ticker-" + req.Ticker) {
 		return datatypes.NoSuchTicker
 	}
 

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -85,18 +86,22 @@ func main() {
 	}
 
 	flag.Usage()
-	args := make([]string, 3)
+	input := bufio.NewReader(os.Stdin)
+
 	for {
 		fmt.Println("Please enter a command: ")
-		_, err := fmt.Fscanf(os.Stdin, "%s %s %s \n", &args[0], &args[1], &args[2])
+		line, err := input.ReadString('\n')
+		/*		_, err := fmt.Fscanf(os.Stdin, "%s %s %s \n", &args[0], &args[1], &args[2])*/
 		if err != nil {
 			fmt.Println("Error Parsing Args: ", err)
 			flag.Usage()
 			os.Exit(1)
 		}
 
-		/*		args := strings.Split(line, " ")*/
+		args := strings.Split(line, " ")
 		cmd := args[0]
+		lastBytes := []byte(args[len(args)-1])
+		args[len(args)-1] = string(lastBytes[0 : len(lastBytes)-1])
 
 		ci, found := cmdmap[cmd]
 		if !found {
@@ -134,7 +139,7 @@ func main() {
 			printStatus(ci.funcname, status, err)
 		case "tx": // make transaction
 			checkSession()
-			reqs, err := parseRequests(args[1])
+			reqs, err := parseRequests(args[1:])
 			if err != nil {
 				fmt.Println("Error parsing requests")
 				break
@@ -213,8 +218,8 @@ func printHoldings(holdings []datatypes.Holding) {
 	}
 }
 
-func parseRequests(req string) ([]datatypes.Request, error) {
-	argList := strings.Split(req, " ")
+func parseRequests(argList []string) ([]datatypes.Request, error) {
+	/*	argList := strings.Split(req, " ")*/
 	requests := make([]datatypes.Request, 0)
 
 	// Every request uses 4 arguments, space-delimited. Check total # of args
@@ -237,7 +242,7 @@ func parseRequests(req string) ([]datatypes.Request, error) {
 		case Quantity:
 			quantity, err := strconv.ParseInt(argList[i], 10, 64)
 			if err != nil {
-				fmt.Println("Error parsing quantity as number: ", argList[i])
+				fmt.Println("Error parsing quantity as number: ", err)
 				return requests, errors.New("Invalid quantity")
 			}
 			// add request to return list
