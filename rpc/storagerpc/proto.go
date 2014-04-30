@@ -64,7 +64,7 @@ type GetServersArgs struct {
 }
 
 type GetServersReply struct {
-	Status  datatypes.Status
+	Status  Status
 	Servers []Node
 }
 
