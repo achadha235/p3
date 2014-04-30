@@ -1,19 +1,13 @@
 package coordinator
 
 import (
-	"achadha235/p3/datatypes"
-	"achadha235/p3/rpc/storagerpc"
-	"achadha235/p3/util"
+	"github.com/achadha235/p3/datatypes"
+	"github.com/achadha235/p3/rpc/storagerpc"
+	"github.com/achadha235/p3/util"
+	"log"
 	"net/rpc"
 	"time"
 )
-
-/*
-Implementation Plan:
-1. Move everything to single thread (done)
-2. Hook in Transact to break up transactions to appropriate servers
-
-*/
 
 type coordinator struct {
 	masterStorageServer *rpc.Client            // RPC connection to masterStorage
@@ -37,11 +31,14 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 	// attempt to get the list of servers in the ring from the MasterStorageServer
 	var servers []storagerpc.Node
 	for t := util.MaxConnectAttempts; ; t-- {
-		err := cli.Call("StorageServer.GetServers", args, reply)
+		err := cli.Call("CohortStorageServer.GetServers", args, &reply)
+		log.Println("status: ", reply.Status)
+		log.Println("Ok status: ", storagerpc.OK)
 		if reply.Status == storagerpc.OK {
 			servers = reply.Servers
 			break
 		} else if t <= 0 {
+			log.Println("SS Not Ready")
 			// StorageServers not ready
 			return nil, err
 		}
@@ -80,6 +77,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		}
 
 		ss := util.FindServerFromKey(data.User.UserID, coord.servers)
+		log.Println("ss: ", ss)
 		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
 
 		coord.nextOperationId++
@@ -92,7 +90,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Data:          data,
 		}
 
-		ss := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+		ss := util.FindServerFromKey("team-"+data.Team.TeamID, coord.servers)
 		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
 
 		coord.nextOperationId++
@@ -106,7 +104,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Data:          data,
 		}
 
-		ssTeam := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+		ssTeam := util.FindServerFromKey("team-"+data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
 
 		coord.nextOperationId++
@@ -212,7 +210,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 
 		for i := 0; i < len(argsList); i++ {
 			prepareArgs := argsList[i]
-			var prepareReply *storagerpc.PrepareReply
+			var prepareReply storagerpc.PrepareReply
 			coord.connections[hostport].Go("CohortStorageServer.Prepare", prepareArgs, &prepareReply, doneCh)
 			responsesToExpect++
 		}

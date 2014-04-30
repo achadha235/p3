@@ -3,8 +3,8 @@
 package stockclient
 
 import (
-	"achadha235/p3/datatypes"
-	"achadha235/p3/rpc/stockrpc"
+	"github.com/achadha235/p3/datatypes"
+	"github.com/achadha235/p3/rpc/stockrpc"
 	"net/rpc"
 )
 

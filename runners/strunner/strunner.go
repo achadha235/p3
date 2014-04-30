@@ -3,8 +3,8 @@
 package main
 
 import (
-	"achadha235/p3/stockserver"
 	"flag"
+	"github.com/achadha235/p3/stockserver"
 	"log"
 	"net"
 	"strconv"

@@ -1,14 +1,14 @@
 package stockserver
 
 import (
-	"achadha235/p3/datatypes"
-	"achadha235/p3/libstore"
-	"achadha235/p3/rpc/stockrpc"
-	"achadha235/p3/rpc/storagerpc"
-	"achadha235/p3/util"
 	"code.google.com/p/go.crypto/bcrypt"
 	"encoding/json"
 	"errors"
+	"github.com/achadha235/p3/datatypes"
+	"github.com/achadha235/p3/libstore"
+	"github.com/achadha235/p3/rpc/stockrpc"
+	"github.com/achadha235/p3/rpc/storagerpc"
+	"github.com/achadha235/p3/util"
 	"log"
 	"net"
 	"net/http"
@@ -168,7 +168,7 @@ func (ss *stockServer) CreateTeam(args *stockrpc.CreateTeamArgs, reply *stockrpc
 		Users:    userList,
 		HashPW:   string(hashed),
 		Balance:  DefaultStartAmount,
-		Holdings: make([]string, 0),
+		Holdings: make(map[string]string),
 	}
 
 	data := &datatypes.DataArgs{Team: team}
@@ -286,8 +286,8 @@ func (ss *stockServer) GetPortfolio(args *stockrpc.GetPortfolioArgs, reply *stoc
 	// get holdings from IDs
 	var holding datatypes.Holding
 	holdings := make([]datatypes.Holding, 0, len(team.Holdings))
-	for i := 0; i < len(team.Holdings); i++ {
-		holdingData, status, err := ss.ls.Get(team.Holdings[i])
+	for _, holdingKey := range team.Holdings {
+		holdingData, status, err := ss.ls.Get(holdingKey)
 		if err != nil {
 			reply.Status = datatypes.BadData
 			return err

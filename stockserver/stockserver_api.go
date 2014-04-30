@@ -1,6 +1,6 @@
 package stockserver
 
-import "achadha235/p3/rpc/stockrpc"
+import "github.com/achadha235/p3/rpc/stockrpc"
 
 type StockServer interface {
 

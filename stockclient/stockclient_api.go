@@ -2,7 +2,7 @@
 
 package stockclient
 
-import "achadha235/p3/datatypes"
+import "github.com/achadha235/p3/datatypes"
 
 // StockClient defines the interface for the implementation
 type StockClient interface {

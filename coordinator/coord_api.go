@@ -1,7 +1,7 @@
 package coordinator
 
 import (
-	"achadha235/p3/datatypes"
+	"github.com/achadha235/p3/datatypes"
 )
 
 type Coordinator interface {

@@ -1,16 +1,16 @@
 package storagerpc
 
-type RemoteCohortServer interface { // This should be RemoteCohortServer
+type RemoteCohortStorageServer interface { // This should be RemoteCohortServer
 	Prepare(*PrepareArgs, *PrepareReply) error
 	Commit(*CommitArgs, *CommitReply) error
 	Get(*GetArgs, *GetReply) error
 	GetServers(*GetServersArgs, *GetServersReply) error
 }
 
-type CohortServer struct {
-	RemoteCohortServer
+type CohortStorageServer struct {
+	RemoteCohortStorageServer
 }
 
-func Wrap(s RemoteCohortServer) RemoteCohortServer {
-	return &CohortServer{s}
+func Wrap(s RemoteCohortStorageServer) RemoteCohortStorageServer {
+	return &CohortStorageServer{s}
 }

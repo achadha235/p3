@@ -2,13 +2,12 @@ package storagerpc
 
 import (
 	"github.com/achadha235/p3/datatypes"
-	"net/rpc"
 )
 
 type Status int
 
 const (
-	OK Status = iota + 1
+	OK Status = iota
 	NotReady
 	KeyNotFound
 )
@@ -24,7 +23,6 @@ type Node struct {
 	NodeId   uint32
 	HostPort string
 	Master   bool
-	Client   *rpc.Client
 }
 
 type TransactionType int
@@ -52,12 +50,13 @@ type TransactionData struct {
 	jsonString string
 }
 
-type RegisterServerArgs struct {
+type RegisterArgs struct {
+	ServerInfo Node
 }
 
-type RegisterServerReply struct {
-	Status int
-	NodeId int
+type RegisterReply struct {
+	Status  Status
+	Servers []Node
 }
 
 type GetServersArgs struct {

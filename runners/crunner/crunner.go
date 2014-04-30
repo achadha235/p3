@@ -2,11 +2,11 @@
 package main
 
 import (
-	"achadha235/p3/datatypes"
-	"achadha235/p3/stockclient"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/achadha235/p3/datatypes"
+	"github.com/achadha235/p3/stockclient"
 	"log"
 	"net"
 	"os"
@@ -84,52 +84,57 @@ func main() {
 		cmdmap[j.cmdline] = j
 	}
 
-	var line string
+	flag.Usage()
+	args := make([]string, 3)
 	for {
-		_, err := fmt.Fscanf(os.Stdin, "%s\n", &line)
+		fmt.Println("Please enter a command: ")
+		_, err := fmt.Fscanf(os.Stdin, "%s %s %s \n", &args[0], &args[1], &args[2])
 		if err != nil {
 			fmt.Println("Error Parsing Args: ", err)
 			flag.Usage()
 			os.Exit(1)
 		}
 
-		args := strings.Split(line, " ")
+		/*		args := strings.Split(line, " ")*/
 		cmd := args[0]
 
 		ci, found := cmdmap[cmd]
 		if !found {
+			fmt.Printf("Command not found: %s\n", cmd)
 			flag.Usage()
 			os.Exit(1)
 		}
 
 		if len(args) < (ci.nargs + 1) {
+			fmt.Printf("Expected args: %d, but got: %d\n", ci.nargs, len(args)-1)
 			flag.Usage()
 			os.Exit(1)
 		}
 
 		switch cmd {
 		case "login": // login
-			status, key, err := client.LoginUser(flag.Arg(1), flag.Arg(2))
+			status, key, err := client.LoginUser(args[1], args[2])
 			sessionKey = key
 			printStatus(ci.funcname, status, err)
 		case "cu": // create user
-			status, err := client.CreateUser(flag.Arg(1), flag.Arg(2))
+			log.Println("Attempting to create user")
+			status, err := client.CreateUser(args[1], args[2])
 			printStatus(ci.funcname, status, err)
 		case "ct": // create team
 			checkSession()
-			status, err := client.CreateTeam(sessionKey, flag.Arg(1), flag.Arg(2))
+			status, err := client.CreateTeam(sessionKey, args[1], args[2])
 			printStatus(ci.funcname, status, err)
 		case "jt": // join team
 			checkSession()
-			status, err := client.JoinTeam(sessionKey, flag.Arg(1), flag.Arg(2))
+			status, err := client.JoinTeam(sessionKey, args[1], args[2])
 			printStatus(ci.funcname, status, err)
 		case "lt": // leave team
 			checkSession()
-			status, err := client.LeaveTeam(sessionKey, flag.Arg(1))
+			status, err := client.LeaveTeam(sessionKey, args[1])
 			printStatus(ci.funcname, status, err)
 		case "tx": // make transaction
 			checkSession()
-			reqs, err := parseRequests(flag.Arg(1))
+			reqs, err := parseRequests(args[1])
 			if err != nil {
 				fmt.Println("Error parsing requests")
 				break
@@ -137,16 +142,16 @@ func main() {
 			status, err := client.MakeTransaction(sessionKey, reqs)
 			printStatus(ci.funcname, status, err)
 		case "gp":
-			holdings, status, err := client.GetPortfolio(flag.Arg(1))
+			holdings, status, err := client.GetPortfolio(args[1])
 			if status == datatypes.OK {
 				printHoldings(holdings)
 			} else {
 				printStatus(ci.funcname, status, err)
 			}
 		case "pr":
-			price, status, err := client.GetPrice(flag.Arg(1))
+			price, status, err := client.GetPrice(args[1])
 			if status == datatypes.OK {
-				printTicker(flag.Arg(1), price)
+				printTicker(args[1], price)
 			} else {
 				printStatus(ci.funcname, status, err)
 			}
@@ -240,7 +245,7 @@ func parseRequests(req string) ([]datatypes.Request, error) {
 				TeamID:   team,
 				Ticker:   ticker,
 				Action:   action,
-				Quantity: int(quantity),
+				Quantity: uint64(quantity),
 			}
 			requests = append(requests, request)
 		}

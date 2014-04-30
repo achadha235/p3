@@ -1,10 +1,11 @@
 package libstore
 
 import (
-	"achadha235/p3/coordinator"
-	"achadha235/p3/datatypes"
-	"achadha235/p3/rpc/storagerpc"
-	"achadha235/p3/util"
+	"github.com/achadha235/p3/coordinator"
+	"github.com/achadha235/p3/datatypes"
+	"github.com/achadha235/p3/rpc/storagerpc"
+	"github.com/achadha235/p3/util"
+	"log"
 	"net/rpc"
 	"time"
 )
@@ -49,20 +50,25 @@ func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
 
 	// attempt to get the list of servers in the ring from the MasterStorageServers
 	for i := 0; i < util.MaxConnectAttempts; i++ {
-		ls.connections[masterServerHostPort].Call("StorageServer.GetServers", args, reply)
+		ls.connections[masterServerHostPort].Call("CohortStorageServer.GetServers", args, &reply)
 		if reply.Status != storagerpc.OK {
 			time.Sleep(time.Second)
 			continue
 		} else {
+			/*			log.Println("Reply servers: ", reply.Servers)*/
 			ls.storageServers = reply.Servers
 			break
 		}
 	}
 
+	/*	log.Println("SS here: ", ls.storageServers)*/
+
 	// connect to each of the storageServers when we acquire the list
 	for i := 0; i < len(ls.storageServers); i++ {
+		log.Println("Srv: ", ls.storageServers[i])
 		hostport := ls.storageServers[i].HostPort
 		if hostport != masterServerHostPort { // Dont dial the master twice
+			log.Println("Dialing: ", hostport)
 			cli, err := util.TryDial(hostport)
 			if err != nil {
 				return nil, err
@@ -87,9 +93,11 @@ func (ls *libstore) Get(key string) (string, storagerpc.Status, error) {
 	args := &storagerpc.GetArgs{Key: key}
 	var reply storagerpc.GetReply
 
+	log.Println("ss: ", ls.storageServers)
 	ss := util.FindServerFromKey(key, ls.storageServers)
 
-	err := ls.connections[ss.HostPort].Call("StorageServer.Get", args, &reply)
+	log.Println("Connections on libstore: ", ls.connections)
+	err := ls.connections[ss.HostPort].Call("CohortStorageServer.Get", args, &reply)
 	if err != nil {
 		return "", storagerpc.NotReady, err
 	}

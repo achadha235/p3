@@ -1,8 +1,8 @@
 package libstore
 
 import (
-	"achadha235/p3/datatypes"
-	"achadha235/p3/rpc/storagerpc"
+	"github.com/achadha235/p3/datatypes"
+	"github.com/achadha235/p3/rpc/storagerpc"
 )
 
 // Libstore defines the set of methods that a StockServer can call on its

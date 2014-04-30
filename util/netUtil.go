@@ -1,9 +1,11 @@
 package util
 
 import (
+	"fmt"
 	"github.com/achadha235/p3/rpc/storagerpc"
 	"hash/fnv"
 	"net/rpc"
+	"strings"
 )
 
 const (
@@ -12,10 +14,19 @@ const (
 
 // return the appropriate node to use for the RPC request to the hashing ring
 func FindServerFromKey(key string, servers []storagerpc.Node) *storagerpc.Node {
+	fmt.Println("servers: ", servers)
 	if servers == nil || len(servers) == 0 {
 		return nil
+	} else if len(servers) == 1 {
+		return &servers[0]
 	}
 
+	parts := strings.Split(key, "-")
+	if len(parts) >= 2 {
+		key = parts[1]
+	}
+
+	fmt.Println("key: ", key)
 	hashed := StoreHash(key)
 
 	current := servers[0]

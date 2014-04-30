@@ -4,7 +4,6 @@ import (
 	"code.google.com/p/go.crypto/bcrypt"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/achadha235/p3/datatypes"
 	"github.com/achadha235/p3/rpc/storagerpc"
 	"github.com/achadha235/p3/util"
@@ -12,25 +11,48 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"sort"
 	"sync"
 	"time"
 )
 
 type cohortStorageServer struct {
 	rpc            *rpc.Client
-	nodeId         int
+	nodeId         uint32
 	master         bool
 	masterHostPort string
 	selfHostPort   string
-	servers        map[int]*storagerpc.Node // Consistent hashing ring. Empty if not instance is not master.
+	servers        []storagerpc.Node // Consistent hashing ring. Empty if not instance is not master.
 	tickers        map[string]uint64
 	numNodes       int
+	exists         map[uint32]bool // map [nodeID] --> bool (true if nodeID already in use)
 
+	rw      *sync.RWMutex            // lock for master when registering the ring of servers
 	storage map[string]string        // Key value storage
 	locks   map[string]*sync.RWMutex // Locks for acessing storage
 	undoLog map[int]LogEntry         // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
 	redoLog map[int]LogEntry         // TransactionId to Store 1. Key 2. TransactionID. (New)Value
 }
+
+type By func(s1, s2 *storagerpc.Node) bool
+
+// Sort for ordering storageServer.nodes slice by nodeID
+func (by By) Sort(nodes []storagerpc.Node) {
+	ss := &nodeSorter{
+		nodes: nodes,
+		by:    by, // The Sort method's receiver is the function (closure) that defines the sort order.
+	}
+	sort.Sort(ss)
+}
+
+type nodeSorter struct {
+	nodes []storagerpc.Node
+	by    func(s1, s2 *storagerpc.Node) bool // Closure used in the Less method.
+}
+
+func (s *nodeSorter) Len() int           { return len(s.nodes) }
+func (s *nodeSorter) Swap(i, j int)      { s.nodes[i], s.nodes[j] = s.nodes[j], s.nodes[i] }
+func (s *nodeSorter) Less(i, j int) bool { return s.by(&s.nodes[i], &s.nodes[j]) }
 
 type KeyValuePair struct {
 	Key   string
@@ -42,16 +64,19 @@ type LogEntry struct {
 	Logs          []KeyValuePair
 }
 
-func NewCohortServer(masterHostPort string, selfHostPort string, nodeId int, numNodes int) (storagerpc.RemoteCohortServer, error) {
+func NewCohortStorageServer(masterHostPort, selfHostPort string, nodeId uint32, numNodes int) (CohortStorageServer, error) {
 	ss := new(cohortStorageServer)
 
 	ss.nodeId = nodeId
 	ss.masterHostPort = masterHostPort
 	ss.selfHostPort = selfHostPort
 
-	ss.servers = make(map[int]*storagerpc.Node) // Consistent hashing ring. Empty if not instance is not master.
+	ss.servers = make([]storagerpc.Node, 0, numNodes) // Consistent hashing ring. Empty if not instance is not master.
 	ss.storage = make(map[string]string)
 	ss.locks = make(map[string]*sync.RWMutex)
+	ss.exists = make(map[uint32]bool)
+	ss.rw = new(sync.RWMutex)
+
 	ss.undoLog = make(map[int]LogEntry) // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
 	ss.redoLog = make(map[int]LogEntry) // TransactionId to Store 1. Key 2. TransactionID. (New)Value
 
@@ -59,30 +84,113 @@ func NewCohortServer(masterHostPort string, selfHostPort string, nodeId int, num
 	ss.tickers = make(map[string]uint64)
 	ss.setTickers()
 
-	rpc.RegisterName("RemoteCohortServer", storagerpc.Wrap(ss))
-	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", selfHostPort)
-	if e != nil {
-		log.Fatalln("listen error:", e)
-		return nil, e
-	}
-	go http.Serve(l, nil)
-
-	if masterHostPort == selfHostPort {
+	// server is the master and must init the ring and listen for 'RegisterServer' calls
+	if masterHostPort == "" {
 		ss.master = true
-		//TODO:  if master we should be listening for other clients to connect!!!!!
-		// Add ss.nodes []storagerpc.Node
-	} else {
-		ss.master = false
-		fmt.Println("Cohort starting...")
-		cli, err := util.TryDial(masterHostPort)
+		masterNode := storagerpc.Node{HostPort: selfHostPort, NodeId: nodeId, Master: true}
+		ss.exists[nodeId] = true
+		ss.servers = append(ss.servers, masterNode)
+
+		for errCount := 0; ; errCount++ {
+			err := rpc.RegisterName("CohortStorageServer", storagerpc.Wrap(ss))
+			if err != nil {
+				if errCount == 5 {
+					return nil, err
+				}
+				time.Sleep(time.Second)
+				continue
+			} else {
+				break
+			}
+		}
+
+		var err error
+		listener, err := net.Listen("tcp", selfHostPort)
+		log.Println("Master listening on: ", selfHostPort)
 		if err != nil {
 			return nil, err
 		}
-		ss.rpc = cli
-		fmt.Println(cli)
+
+		rpc.HandleHTTP()
+		go http.Serve(listener, nil)
+
+		return ss, nil
 	}
+
+	// server is a slave in the ring
+	cli, err := util.TryDial(masterHostPort)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try to register the slave into the ring with the masterNode
+	slaveNode := storagerpc.Node{HostPort: selfHostPort, NodeId: nodeId, Master: false}
+	args := &storagerpc.RegisterArgs{ServerInfo: slaveNode}
+	var reply storagerpc.RegisterReply
+
+	// break out when status == storagerpc.OK
+	for ; reply.Status == storagerpc.NotReady; time.Sleep(time.Second) {
+		if err := cli.Call("CohortStorageServer.RegisterServer", args, &reply); err != nil {
+			return nil, err
+		}
+	}
+
+	ss.servers = reply.Servers
+
+	for errCount := 0; ; errCount++ {
+		err := rpc.RegisterName("CohortStorageServer", storagerpc.Wrap(ss))
+		if err != nil {
+			if errCount == 5 {
+				return nil, err
+			}
+			time.Sleep(time.Second)
+			continue
+		} else {
+			break
+		}
+	}
+
+	listener, err := net.Listen("tcp", selfHostPort)
+	if err != nil {
+		return nil, err
+	}
+
+	rpc.HandleHTTP()
+	go http.Serve(listener, nil)
+
 	return ss, nil
+}
+
+func (ss *cohortStorageServer) RegisterServer(args *storagerpc.RegisterArgs, reply *storagerpc.RegisterReply) error {
+	// Node not yet seen by MasterServer
+	ss.rw.Lock()
+	defer ss.rw.Unlock()
+	if _, ok := ss.exists[args.ServerInfo.NodeId]; !ok {
+		ss.exists[args.ServerInfo.NodeId] = true
+		ss.servers = append(ss.servers, args.ServerInfo)
+	}
+
+	if len(ss.servers) < ss.numNodes {
+		reply.Status = storagerpc.NotReady
+		return nil
+	}
+
+	/// sort the nodes by nodeID starting from lowest
+	nodeSorter := func(n1, n2 *storagerpc.Node) bool {
+		return n1.NodeId < n2.NodeId
+	}
+	By(nodeSorter).Sort(ss.servers)
+
+	for i := 0; i < len(ss.servers); i++ {
+		node := ss.servers[i]
+		if args.ServerInfo.NodeId == node.NodeId {
+
+		}
+	}
+
+	reply.Status = storagerpc.OK
+	reply.Servers = ss.servers
+	return nil
 }
 
 func (ss *cohortStorageServer) setTickers() {
@@ -93,9 +201,9 @@ func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storag
 	var exists bool
 	var commitLog LogEntry
 	if args.Status == storagerpc.Commit {
-		commitLog, exists := ss.redoLog[args.TransactionId]
+		commitLog, exists = ss.redoLog[args.TransactionId]
 	} else {
-		commitLog, exists := ss.undoLog[args.TransactionId]
+		commitLog, exists = ss.undoLog[args.TransactionId]
 	}
 	if !exists {
 		return errors.New("Commit without prepare not possible")
@@ -172,7 +280,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		return nil
 
 	case op == datatypes.AddUserToTeamList:
-		userKey := "user-" + args.Data.User.UserID
 		teamKey := "team-" + args.Data.Team.TeamID
 
 		if ss.isCorrectServer(args.Data.Team.TeamID) {
@@ -214,7 +321,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 	case op == datatypes.AddTeamToUserList:
 		userKey := "user-" + args.Data.User.UserID
-		teamKey := "team-" + args.Data.Team.TeamID
 
 		if !ss.isCorrectServer(args.Data.User.UserID) {
 			reply.Status = datatypes.BadData
@@ -247,7 +353,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		return nil
 
 	case op == datatypes.RemoveUserFromTeamList:
-		userKey := "user-" + args.Data.User.UserID
 		teamKey := "team-" + args.Data.Team.TeamID
 
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
@@ -283,7 +388,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 	case op == datatypes.RemoveTeamFromUserList:
 		userKey := "user-" + args.Data.User.UserID
-		teamKey := "team-" + args.Data.Team.TeamID
 
 		if !ss.isCorrectServer(args.Data.User.UserID) {
 			reply.Status = datatypes.BadData
@@ -322,7 +426,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 		// keys for lookup in storage map
 		tickerKey := "ticker-" + tickerName
-		userKey := "user-" + args.Data.User.UserID
 		teamKey := "team-" + args.Data.Team.TeamID
 		holdingKey := "holding-" + args.Data.Team.TeamID + "-" + tickerName
 
@@ -425,7 +528,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 		// keys for lookup in storage map
 		tickerKey := "ticker-" + tickerName
-		userKey := "user-" + args.Data.User.UserID
 		teamKey := "team-" + args.Data.Team.TeamID
 		/*		holdingKey := "holding-" + args.Data.TeamID + "-" + tickerName*/
 
@@ -559,7 +661,11 @@ func (ss *cohortStorageServer) getOrCreateRWMutex(key string) *sync.RWMutex {
 }
 
 func (ss *cohortStorageServer) GetServers(args *storagerpc.GetServersArgs, reply *storagerpc.GetServersReply) error {
+	log.Println("Entered GetServers")
+	defer log.Println("Exiting GetServers")
+	log.Println("Current servers: ", ss.servers)
 	if len(ss.servers) < ss.numNodes {
+		log.Println("Not ready")
 		reply.Status = storagerpc.NotReady
 		return nil
 	}
@@ -576,23 +682,23 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 	}
 	hashed := util.StoreHash(key)
 	last := ss.servers[l-1]
-	if hash > last.NodeId && ss.nodes[0].NodeId == ss.nodeId {
+	if hashed > last.NodeId && ss.servers[0].NodeId == ss.nodeId {
 		return true
 	}
 	for i := 0; i < l; i++ {
-		if hash <= ss.servers[i].NodeID {
-			if ss.nodeId == ss.nodes[i].NodeID {
-				return true
-			}
+		if hashed <= ss.servers[i].NodeId && ss.nodeId == ss.servers[i].NodeId {
+			return true
 		}
 	}
+
+	return false
 }
 
 // Remove an string from a slice of strings
 func remove(list []string, id string) []string {
 	for i := 0; i < len(list); i++ {
 		if list[i] == id {
-			return append(list[0:i], list[i+1]...)
+			return append(list[0:i], list[i+1:]...)
 		}
 	}
 

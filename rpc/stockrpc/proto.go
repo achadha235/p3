@@ -4,7 +4,7 @@
 package stockrpc
 
 import (
-	"achadha235/p3/datatypes"
+	"github.com/achadha235/p3/datatypes"
 )
 
 // v0: Portfolio actions supported : Buy/Sell
