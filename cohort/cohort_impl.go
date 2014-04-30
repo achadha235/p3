@@ -195,6 +195,10 @@ func (ss *cohortStorageServer) RegisterServer(args *storagerpc.RegisterArgs, rep
 
 func (ss *cohortStorageServer) setTickers() {
 	ss.tickers["APPL"] = 500
+	ss.tickers["POM"] = 26
+	ss.tickers["CHRW"] = 59
+	ss.tickers["WLP"] = 100
+	ss.tickers["DNB"] = 109
 }
 
 func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
