@@ -10,6 +10,7 @@ type RemoteCohortServer interface { // This should be RemoteCohortServer
 	ExecuteTransaction(*TransactionArgs, *TransactionReply) error // This should be defined by the application
 	Commit(*CommitArgs, *CommitReply) error
 	Get(*GetArgs, *GetReply) error
+	GetServers(*GetServersArgs, *GetServersReply) error
 }
 
 type CohortServer struct {
