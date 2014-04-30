@@ -17,13 +17,14 @@ import (
 )
 
 type cohortStorageServer struct {
-	rpc              *rpc.Client  
+	rpc              *rpc.Client
 	nodeId        	 int
 	master 			 bool
 	masterHostPort   string
-	selfHostPort	 string 
+	selfHostPort	 string
 	servers map[int] *storagerpc.Node    // Consistent hashing ring. Empty if not instance is not master.
-	
+	numNodes int
+
 	storage map[string]string           // Key value storage
 	locks 	map[string]*sync.RWMutex			// Locks for acessing storage
 	undoLog map[int]storagerpc.LogEntry // TransactionId to Store 1. Key 2. TransactionId. (Old)Value
@@ -42,8 +43,8 @@ func main() {
 func NewCohortServer (masterHostPort string, selfHostPort string, nodeId int, numNodes int) (storagerpc.RemoteCohortServer, error) {
 	ss := new(cohortStorageServer)
 	ss.nodeId = nodeId
-	ss.masterHostPort = masterHostPort 
-	ss.selfHostPort = selfHostPort 
+	ss.masterHostPort = masterHostPort
+	ss.selfHostPort = selfHostPort
 
 	ss.servers = make(map[int]*storagerpc.Node)    // Consistent hashing ring. Empty if not instance is not master.
 	ss.storage = make(map[string]string)
@@ -74,7 +75,7 @@ func NewCohortServer (masterHostPort string, selfHostPort string, nodeId int, nu
 	}
 	return ss, nil
 }
-	
+
 func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
 
 //				if commitReq.args.Status == storagerpc.Commit {
@@ -119,13 +120,13 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 				if err != nil {
 					reply.Status = datatypes.BadData
 					return nil
-				} 
+				}
 				newValue := string(newB)
 
 				undoLogEntry := storagerpc.LogEntry{transactionId, key, userString}
 				redoLogEntry := storagerpc.LogEntry{transactionId, key, newValue}
 				ss.undoLog[args.TransactionId] = undoLogEntry
-				ss.redoLog[args.TransactionId] = redoLogEntry	
+				ss.redoLog[args.TransactionId] = redoLogEntry
 				reply.Staus = datatypes.OK
 				return nil
 			}
@@ -139,7 +140,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 				if err != nil {
 					reply.Status = datatypes.BadData
 					return nil
-				} 
+				}
 				newValue := string(newB)
 
 				undoKvp := []KeyValuePair{KeyValuePair{key, teamString}}
@@ -148,7 +149,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 				undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
 				redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
 				ss.undoLog[args.TransactionId] = undoLogEntry
-				ss.redoLog[args.TransactionId] = redoLogEntry	
+				ss.redoLog[args.TransactionId] = redoLogEntry
 				reply.Staus = datatypes.OK
 
 				return nil
@@ -163,7 +164,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 			if ss.isCorrectServer(userKey){
 				userString, userExists := ss.storage[userKey]
-				if !userExists { 
+				if !userExists {
 					reply.Status = datatypes.NoSuchUser
 					return nil
 				}
@@ -183,12 +184,12 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 				}
 				redoKvp[0] = KeyValuePair{userKey, string(newUserBytes)}
 			}
-			
+
 
 			teamKey := "team-" + args.Data.Team.TeamID
 			if ss.isCorrectServer(teamKey){
 				teamString, teamExists := ss.storage[teamKey]
-				if !teamExists { 
+				if !teamExists {
 					reply.Status = datatypes.NoSuchTeam
 					return nil
 				}
@@ -212,7 +213,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
 			redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
 			ss.undoLog[args.TransactionId] = undoLogEntry
-			ss.redoLog[args.TransactionId] = redoLogEntry					
+			ss.redoLog[args.TransactionId] = redoLogEntry
 
 		case op == datatypes.RemoveUserFromTeamList
 		case op == datatypes.RemoveTeamFromUserList
@@ -235,7 +236,7 @@ func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.G
 		reply.StorageStatus = storagerpc.OK
 	}
 	lock.RUnlock()
-	reply.Status = datatypes.OK 
+	reply.Status = datatypes.OK
 
 	return nil
 }
@@ -270,6 +271,17 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 	}
 }
 
+func (ss *cohortStorageServer) GetServers(*storagerpc.GetServersArgs, *storagerpc.GetServersReply) error {
+	if len(ss.servers) < ss.numNodes {
+		reply.Status = storagerpc.NotReady
+		return nil
+	}
+
+	reply.Status = storagerpc.OK
+	reply.Servers = ss.nodes
+	return nil
+}
+
 
 // func (ss *cohortStorageServer) createLogs(args *storagerpc.PrepareArgs){
 // 	switch args.
@@ -279,7 +291,7 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 	// ss.storage = make(map[string]string)
 	// ss.redoLog = make(map[int]storagerpc.LogEntry)
 	// ss.undoLog = make(map[int]storagerpc.LogEntry)
-	
+
 	// rpc.RegisterName("RemoteCohortServer", RemoteCohortServer(ss))
 	// rpc.HandleHTTP()
 	// l, e := net.Listen("tcp", ":3000")
@@ -296,12 +308,12 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 	// 	}
 	// 	// Needs to wait for expected ring to join
 	// } else {
-	// // Dial the master. 
-		
-	// 		
-	// 		
-	// 		
-	// 		
+	// // Dial the master.
+
+	//
+	//
+	//
+	//
 
 	// }
 
@@ -321,17 +333,17 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 // 	}
 
 // 	// Set up cohort rpc
-// 	
+//
 
-// 	
-// 	
-// 	
-// 	
-// 	
+//
+//
+//
+//
+//
 
-// 	
-// 	
-// 	
+//
+//
+//
 
 // 	rpc.RegisterName("CohortStorageServer", server)
 
@@ -364,10 +376,10 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 // 		select {
 // 		case prepareReq := <-ss.prepareChannel:
 
-// 			
+//
 
 // 		case commitReq := <-ss.commitChannel:
-// 			
+//
 
 // 		case getReq := <-ss.getChannel:
 
