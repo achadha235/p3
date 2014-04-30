@@ -1,5 +1,6 @@
 package util
 
+
 // This file contains utility functions for creating lookup keys for the storage server.
 // Each function is preceded by a comment specifying the structure of the result that is returned
 
@@ -34,3 +35,6 @@ func CreateTeamHoldingsKey(id string) string { return AppendRoute(CreateTeamKey(
 
 // ticker:id --> share price (int64) in cents
 func CreateTickerKey(id string) string { return CreateKey("ticker", id) }
+
+
+

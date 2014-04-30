@@ -1,20 +1,18 @@
 package storagerpc
 
 import (
-	"achadha235/p3/datatypes"
+	"github.com/achadha235/p3/datatypes"
 	"net/rpc"
 )
 
 type Status int
-
 const (
-	OK Status = iota + 1
-	NotReady
+	OK Status  = iota + 1
+	NotReady 
 	KeyNotFound
 )
 
 type CommitStatus int
-
 const (
 	Commit = iota
 	Rollback
@@ -59,7 +57,7 @@ type KeyValuePair {
 
 type LogEntry struct {
 	TransactionId int
-	Logs []KeyValuePair
+	Ops []KeyValuePair
 }
 
 type RegisterServerArgs struct {
@@ -74,7 +72,7 @@ type GetServersArgs struct {
 }
 
 type GetServersReply struct {
-	Status  Status
+	Status  datatypes.Status
 	Servers []Node
 }
 
@@ -102,8 +100,9 @@ type GetArgs struct {
 }
 
 type GetReply struct {
-	Key           string
-	Value         string
+	Key    string
+	Value  string
+	Status datatypes.Status
 	StorageStatus Status
 }
 

@@ -81,36 +81,24 @@ func (ss *cohortStorageServer) SetTickers(){
 }
 	
 func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
-
-//				if commitReq.args.Status == storagerpc.Commit {
-// 				log, exists := ss.redoLog[commitReq.args.TransactionId]
-// 				if !exists {
-// 				}
-// 				ss.storage[log.Key] = log.Value
-
-// 				commitReq.reply <- nil // Handle this error if not found
-// 			} else { // Abort
-// 				log, exists := ss.undoLog[commitReq.args.TransactionId]
-// 				if !exists {
-// 				}
-// 				ss.storage[log.Key] = log.Value
-
-// 				commitReq.reply <- nil // Handle this error if not found
-// 			}
-	return errors.New("Not implemented")
+	if commitReq.args.Status == storagerpc.Commit {
+		log, exists := ss.redoLog[commitReq.args.TransactionId]
+	} else { 
+		log, exists := ss.undoLog[commitReq.args.TransactionId]
+	}
+	if !exists {
+		return error.New("Commit without prepare not possible")
+	}
+	for i := 0; i < len(log.Ops){
+		mtx := ss.getOrCreateRWMutex(log.Key)
+		mtx.Lock()
+		ss.storage[log.Key] = log.Value
+		mtx.Lock()
+	}
+	return nil
 }
-func (ss *cohortStorageServer) ExecuteTransaction(args *storagerpc.TransactionArgs, reply *storagerpc.TransactionReply) error {
 
-// 			args2 := &storagerpc.ProposeArgs{
-// 				putReq.args.Key,
-// 				putReq.args.Value,
-// 			}
-// 			var reply2 *storagerpc.ProposeReply
-// 			doneCh := make(chan *rpc.Call, 1)
-// 			ss.rpc.Go("MasterStorageServer.Propose", args2, &reply2, doneCh)
-// 			go ss.handlePrepareRPC(putReq, doneCh)
-	return errors.New("Not implemented")
-}
+
 func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *storagerpc.PrepareReply) error {
 	op := args.Name
 	switch op {
@@ -374,7 +362,10 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 
 	case op == datatypes.Sell:
-		
+		undoKvp := make([]KeyValuePair, 1)
+		redoKvp := make([]KeyValuePair, 1)
+
+		// Sell can update Holdings, Team 
 
 
 
