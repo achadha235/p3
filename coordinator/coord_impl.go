@@ -100,10 +100,9 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Name:          datatypes.AddUserToTeamList,
 			Data:          data,
 		}
-
 		ssTeam := util.FindServerFromKey("team-"+data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
-
+		log.Println("Prepare map after team", prepareMap)		
 		coord.nextOperationId++
 
 		// create args for call to node with user info and update prepareMap
@@ -115,6 +114,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 
 		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
 		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
+		log.Println("Prepare map after user", prepareMap)		
 
 		coord.nextOperationId++
 
@@ -143,6 +143,8 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		coord.nextOperationId++
 
 	case datatypes.MakeTransaction:
+		log.Println("Performing transaction...", data)
+
 		var op datatypes.OperationType
 		for i := 0; i < len(data.Requests); i++ {
 			// Pull and create args for one request at a time
@@ -186,6 +188,8 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 // and makes async RPC calls to involved nodes to Prepare for 2PC
 func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, error) {
 	// Prepare for transaction
+	log.Println("About to prepare", prepareMap)
+	defer log.Println("Prepare complete")
 
 	stat := storagerpc.CommitStatus(storagerpc.Commit)
 	resultStatus := datatypes.OK
@@ -226,6 +230,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 	}
 
 	// send the Commit call to all nodes with the updated status
+	log.Println("Sending Commit message...", stat)
 	for hostport, args := range prepareMap {
 		for i := 0; i < len(prepareMap[hostport]); i++ {
 			commitArgs := &storagerpc.CommitArgs{
@@ -247,5 +252,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 			return 0, rpcReply.Error
 		}
 	}
+	log.Println("Got response", resultStatus)
+
 	return datatypes.Status(resultStatus), nil
 }

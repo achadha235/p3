@@ -107,13 +107,13 @@ func main() {
 		if !found {
 			fmt.Printf("Command not found: %s\n", cmd)
 			flag.Usage()
-			os.Exit(1)
+			//os.Exit(1)
 		}
 
 		if len(args) < (ci.nargs + 1) {
 			fmt.Printf("Expected args: %d, but got: %d\n", ci.nargs, len(args)-1)
 			flag.Usage()
-			os.Exit(1)
+			//os.Exit(1)
 		}
 
 		switch cmd {
@@ -127,11 +127,19 @@ func main() {
 			printStatus(ci.funcname, status, err)
 		case "ct": // create team
 			checkSession()
+			if len(args) < 3 {
+				fmt.Println("Error parsing requests")
+				break
+			}
 			status, err := client.CreateTeam(sessionKey, args[1], args[2])
 			printStatus(ci.funcname, status, err)
 		case "jt": // join team
 			checkSession()
-			status, err := client.JoinTeam(sessionKey, args[1], args[2])
+			if len(args) < 3 {
+				fmt.Println("Error parsing requests")
+				break
+			}
+			status, err := client.JoinTeam(sessionKey, args[1], args[2]) // error handling for 
 			printStatus(ci.funcname, status, err)
 		case "lt": // leave team
 			checkSession()
@@ -160,6 +168,7 @@ func main() {
 			} else {
 				printStatus(ci.funcname, status, err)
 			}
+
 		}
 
 	} // infinite for loop reading input
@@ -224,14 +233,16 @@ func parseRequests(argList []string) ([]datatypes.Request, error) {
 
 	// Every request uses 4 arguments, space-delimited. Check total # of args
 	if len(argList)%4 != 0 {
+		fmt.Println(len(argList))
 		fmt.Println("ERROR Invalid Number of Arguments for Requests: ", argList)
 		return requests, errors.New("Invalid args")
 	}
 
+	var team, ticker, action string
+	var quantity int64
 	for i := 0; i < len(argList); i++ {
+		fmt.Println("args", argList[i])
 		arg := argType(i)
-		var team, ticker, action string
-
 		switch arg {
 		case TeamID:
 			team = argList[i]
@@ -240,21 +251,29 @@ func parseRequests(argList []string) ([]datatypes.Request, error) {
 		case Action:
 			action = argList[i]
 		case Quantity:
-			quantity, err := strconv.ParseInt(argList[i], 10, 64)
+			qty, err := strconv.ParseInt(argList[i], 10, 64)
 			if err != nil {
 				fmt.Println("Error parsing quantity as number: ", err)
 				return requests, errors.New("Invalid quantity")
 			}
-			// add request to return list
-			request := datatypes.Request{
-				TeamID:   team,
-				Ticker:   ticker,
-				Action:   action,
-				Quantity: uint64(quantity),
-			}
-			requests = append(requests, request)
+			quantity = qty
 		}
 	}
+
+	if (team == "" || ticker == "" || action == "" || quantity == 0){
+		fmt.Println("Unable to parse arguments correctly")
+		return requests, errors.New("Invalid args")
+	}
+	// add request to return list
+	request := datatypes.Request{
+		TeamID:   team,
+		Ticker:   ticker,
+		Action:   action,
+		Quantity: uint64(quantity),
+	}
+
+	fmt.Println("Trying to make request", request)
+	requests = append(requests, request)	
 
 	return requests, nil
 }

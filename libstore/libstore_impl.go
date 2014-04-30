@@ -5,7 +5,7 @@ import (
 	"github.com/achadha235/p3/datatypes"
 	"github.com/achadha235/p3/rpc/storagerpc"
 	"github.com/achadha235/p3/util"
-	/*	"log"*/
+	"log"
 	"net/rpc"
 	"time"
 )
@@ -136,6 +136,16 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 
 	// Check if user and team exists for both JoinTeam/LeaveTeam
 	case datatypes.JoinTeam:
+
+		if !ls.checkExists("user-" + data.User.UserID) {
+			return datatypes.NoSuchUser, nil
+		} else if !ls.checkExists("team-" + data.Team.TeamID) {
+			return datatypes.NoSuchTeam, nil
+		}
+		status, err := ls.coord.PerformTransaction(name, *data)
+		return status, err
+
+
 	case datatypes.LeaveTeam:
 		if !ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.NoSuchUser, nil
@@ -147,6 +157,9 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 		return status, err
 
 	case datatypes.MakeTransaction:
+
+		log.Println("Making a transaction")
+
 		for i := 0; i < len(data.Requests); i++ {
 			// non-OK status then leg of transaction is invalid so cancel all
 			if stat := ls.checkRequest(data.Requests[i]); stat != datatypes.OK {
@@ -163,6 +176,9 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 
 // return non-OK status if the team or ticker in the request are invalid
 func (ls *libstore) checkRequest(req datatypes.Request) datatypes.Status {
+	log.Println("Checking if team exists....")
+
+
 	if !ls.checkExists("team-" + req.TeamID) {
 		return datatypes.NoSuchTeam
 	} else if !ls.checkExists("ticker-" + req.Ticker) {

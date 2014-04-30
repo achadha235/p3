@@ -246,6 +246,11 @@ func (ss *stockServer) LeaveTeam(args *stockrpc.LeaveTeamArgs, reply *stockrpc.L
 
 func (ss *stockServer) MakeTransaction(args *stockrpc.MakeTransactionArgs, reply *stockrpc.MakeTransactionReply) error {
 	// retrieve userID from session
+
+	log.Println("Got transaction request", args.Requests)
+
+
+
 	userID, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
 		reply.Status = datatypes.NoSuchSession
