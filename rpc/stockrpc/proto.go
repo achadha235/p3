@@ -78,6 +78,6 @@ type GetPriceArgs struct {
 }
 
 type GetPriceReply struct {
-	Price  int64 // Price is in cents
+	Price  uint64 // Price is in cents
 	Status datatypes.Status
 }
