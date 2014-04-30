@@ -13,7 +13,6 @@ import (
 	"errors"
 	"sync"
 	"encoding/json"
-
 )
 
 type cohortStorageServer struct {
@@ -30,7 +29,6 @@ type cohortStorageServer struct {
 	redoLog map[int]storagerpc.LogEntry // TransactionId to Store 1. Key 2. TransactionID. (New)Value
 }
 
-
 func main() {
 	fmt.Println("Hello world ");
 	fmt.Println(storagerpc.Commit)
@@ -41,6 +39,8 @@ func main() {
 
 func NewCohortServer (masterHostPort string, selfHostPort string, nodeId int, numNodes int) (storagerpc.RemoteCohortServer, error) {
 	ss := new(cohortStorageServer)
+
+	ss.SetTickers()
 	ss.nodeId = nodeId
 	ss.masterHostPort = masterHostPort 
 	ss.selfHostPort = selfHostPort 
@@ -73,6 +73,11 @@ func NewCohortServer (masterHostPort string, selfHostPort string, nodeId int, nu
 		fmt.Println(cli)
 	}
 	return ss, nil
+}
+
+func (ss *cohortStorageServer) SetTickers(){
+	ss.tickers := make(map[string]uint64)
+	ss.tickers["APPL"] = 500
 }
 	
 func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
@@ -109,115 +114,271 @@ func (ss *cohortStorageServer) ExecuteTransaction(args *storagerpc.TransactionAr
 func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *storagerpc.PrepareReply) error {
 	op := args.Name
 	switch op {
-		case op == datatypes.AddUser:
-			key := "user-" + args.Data.User.UserID
-			userString, exists := ss.storage[key]
-			if exists {
-				reply.Status = Exists
-			} else {
-				newB, err := json.Marshal(args.Data.User)
-				if err != nil {
-					reply.Status = datatypes.BadData
-					return nil
-				} 
-				newValue := string(newB)
-
-				undoLogEntry := storagerpc.LogEntry{transactionId, key, userString}
-				redoLogEntry := storagerpc.LogEntry{transactionId, key, newValue}
-				ss.undoLog[args.TransactionId] = undoLogEntry
-				ss.redoLog[args.TransactionId] = redoLogEntry	
-				reply.Staus = datatypes.OK
+	case op == datatypes.AddUser:
+		key := "user-" + args.Data.User.UserID
+		userString, exists := ss.storage[key]
+		if exists {
+			reply.Status = Exists
+		} else {
+			newB, err := json.Marshal(args.Data.User)
+			if err != nil {
+				reply.Status = datatypes.BadData
 				return nil
-			}
-		case op == datatypes.AddTeam:
-			key := "team-" + args.Data.Team.TeamID
-			teamString, exists := ss.storage[key]
-			if exists {
-				reply.Status = Exists
-			} else {
-				newB, err := json.Marshal(args.Data.Team)
-				if err != nil {
-					reply.Status = datatypes.BadData
-					return nil
-				} 
-				newValue := string(newB)
+			} 
+			newValue := string(newB)
 
-				undoKvp := []KeyValuePair{KeyValuePair{key, teamString}}
-				redoKvp := []KeyValuePair{KeyValuePair{key, newValue}}
-
-				undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
-				redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
-				ss.undoLog[args.TransactionId] = undoLogEntry
-				ss.redoLog[args.TransactionId] = redoLogEntry	
-				reply.Staus = datatypes.OK
-
+			undoLogEntry := storagerpc.LogEntry{transactionId, key, userString}
+			redoLogEntry := storagerpc.LogEntry{transactionId, key, newValue}
+			ss.undoLog[args.TransactionId] = undoLogEntry
+			ss.redoLog[args.TransactionId] = redoLogEntry	
+			reply.Staus = datatypes.OK
+			return nil
+		}
+	case op == datatypes.AddTeam:
+		key := "team-" + args.Data.Team.TeamID
+		teamString, exists := ss.storage[key]
+		if exists {
+			reply.Status = Exists
+		} else {
+			newB, err := json.Marshal(args.Data.Team)
+			if err != nil {
+				reply.Status = datatypes.BadData
 				return nil
+			} 
+			newValue := string(newB)
 
-		case op == datatypes.AddUserToTeamList
-
-			undoKvp := make([]KeyValuePair, 2)
-			redoKvp := make([]KeyValuePair, 2)
-
-			userKey := "user-" + args.Data.User.UserID
-			teamKey := "team-" + args.Team.Team.TeamID
-
-			if ss.isCorrectServer(userKey){
-				userString, userExists := ss.storage[userKey]
-				if !userExists { 
-					reply.Status = datatypes.NoSuchUser
-					return nil
-				}
-				var user datatypes.User
-				err := json.Unmarshal([]byte(userString), &user)
-				if err {
-					reply.Status = BadData
-					return nil
-				}
-
-				undoKvp[0] = KeyValuePair{userKey, userString}
-				user.Teams = Append(user.Teams, teamKey)
-				newUserBytes, err := json.Marshal(user)
-				if err != nil {
-					reply.Status = datatypes.BadData
-					return nil
-				}
-				redoKvp[0] = KeyValuePair{userKey, string(newUserBytes)}
-			}
-			
-
-			teamKey := "team-" + args.Data.Team.TeamID
-			if ss.isCorrectServer(teamKey){
-				teamString, teamExists := ss.storage[teamKey]
-				if !teamExists { 
-					reply.Status = datatypes.NoSuchTeam
-					return nil
-				}
-				var team datatypes.Team
-				err := json.Unmarshal([]byte(teamString), &team)
-				if err {
-					reply.Status = BadData
-					return nil
-				}
-
-				undoKvp[1] = KeyValuePair{teamKey, teamString}
-				team.Users = Append(team.Users, userKey)
-				newTeamBytes, err := json.Marshal(team)
-				if err != nil {
-					reply.Status = datatypes.BadData
-					return nil
-				}
-				redoKvp[1] = KeyValuePair{userKey, string(newTeamBytes)}
-			}
+			undoKvp := []KeyValuePair{KeyValuePair{key, teamString}}
+			redoKvp := []KeyValuePair{KeyValuePair{key, newValue}}
 
 			undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
 			redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
 			ss.undoLog[args.TransactionId] = undoLogEntry
-			ss.redoLog[args.TransactionId] = redoLogEntry					
+			ss.redoLog[args.TransactionId] = redoLogEntry	
+			reply.Staus = datatypes.OK
 
-		case op == datatypes.RemoveUserFromTeamList
-		case op == datatypes.RemoveTeamFromUserList
-		case op == datatypes.Buy:
-		case op == datatypes.Sell:
+			return nil
+
+	case op == datatypes.AddUserToTeamList
+		undoKvp := make([]KeyValuePair, 1)
+		redoKvp := make([]KeyValuePair, 1)
+
+		userKey := "user-" + args.Data.User.UserID
+		teamKey := "team-" + args.Team.Team.TeamID
+		isCorrectServer = ss.isCorrectServer(teamKey);
+
+		if isCorrectServer {
+			teamString, teamExists := ss.storage[teamKey]
+			if !teamExists { 
+				reply.Status = datatypes.NoSuchTeam
+				return nil
+			}
+			var team datatypes.Team
+			err := json.Unmarshal([]byte(teamString), &team)
+			if err {
+				reply.Status = datatypes.BadData
+				return nil
+			}
+
+			if args.Data.Pw == team.HashPW {
+				reply.Status = datatypes.PermissionDenied
+				return nil
+			}
+
+			undoKvp[0] = KeyValuePair{teamKey, teamString}
+			team.Teams = Append(team.Teams, teamKey)
+			newTeamBytes, err := json.Marshal(team)
+			if err != nil {
+				reply.Status = datatypes.BadData
+				return nil
+			}
+			redoKvp[0] = KeyValuePair{teamKey, string(newTeamBytes)}
+		}
+
+		undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
+		redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
+		ss.undoLog[args.TransactionId] = undoLogEntry
+		ss.redoLog[args.TransactionId] = redoLogEntry	
+
+		if isCorrectServer {
+			reply.Status = datatypes.OK
+		} else {
+			reply.Status = datatypes.WrongServer
+		}
+		return nil
+
+	case op == datatypes.AddTeamToUserList:
+
+		undoKvp := make([]KeyValuePair, 1)
+		redoKvp := make([]KeyValuePair, 1)
+
+		userKey := "user-" + args.Data.User.UserID
+		teamKey := "team-" + args.Team.Team.TeamID
+
+		if ss.isCorrectServer(userKey){
+			userString, userExists := ss.storage[userKey]
+			if !userExists { 
+				reply.Status = datatypes.NoSuchUser
+				return nil
+			}
+			var user datatypes.User
+			err := json.Unmarshal([]byte(userString), &user)
+			if err {
+				reply.Status = BadData
+				return nil
+			}
+			undoKvp[0] = KeyValuePair{userKey, userString}
+			user.Teams = Append(user.Teams, teamKey)
+			newUserBytes, err := json.Marshal(user)
+			if err != nil {
+				reply.Status = datatypes.BadData
+				return nil
+			}
+			redoKvp[0] = KeyValuePair{userKey, string(newUserBytes)}
+		} else {
+			reply.Status = datatypes.WrongServer
+			return nil
+		}
+		
+		undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
+		redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
+		ss.undoLog[args.TransactionId] = undoLogEntry
+		ss.redoLog[args.TransactionId] = redoLogEntry	
+
+		reply.Status = datatypes.OK
+		return nil
+						
+	case op == RemoveUserFromTeamList:
+		undoKvp := make([]KeyValuePair, 2)
+		redoKvp := make([]KeyValuePair, 2)
+
+		userKey := "user-" + args.Data.User.UserID
+		teamKey := "team-" + args.Team.Team.TeamID
+		isCorrectServer = ss.isCorrectServer(teamKey);
+
+		if isCorrectServer {
+			teamString, teamExists := ss.storage[teamKey]
+			if !teamExists { 
+				reply.Status = datatypes.NoSuchTeam
+				return nil
+			}
+			var team datatypes.Team
+			err := json.Unmarshal([]byte(teamString), &team)
+			if err {
+				reply.Status = BadData
+				return nil
+			}
+			undoKvp[0] = KeyValuePair{teamKey, teamString}
+
+			team.Teams = Remove(team.Teams, teamKey)
+			newTeamBytes, err := json.Marshal(team)
+			if err != nil {
+				reply.Status = datatypes.BadData
+				return nil
+			}
+			redoKvp[0] = KeyValuePair{teamKey, string(newTeamBytes)}
+		}
+
+		undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
+		redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
+		ss.undoLog[args.TransactionId] = undoLogEntry
+		ss.redoLog[args.TransactionId] = redoLogEntry	
+
+		if isCorrectServer {
+			reply.Status = datatypes.OK
+		} else {
+			reply.Status = datatypes.WrongServer
+		}
+		return nil
+
+
+	case op == RemoveTeamFromUserList:
+		undoKvp := make([]KeyValuePair, 1)
+		redoKvp := make([]KeyValuePair, 1)
+
+		userKey := "user-" + args.Data.User.UserID
+		teamKey := "team-" + args.Team.Team.TeamID
+
+		if ss.isCorrectServer(userKey){
+			userString, userExists := ss.storage[userKey]
+			if !userExists { 
+				reply.Status = datatypes.NoSuchUser
+				return nil
+			}
+			var user datatypes.User
+			err := json.Unmarshal([]byte(userString), &user)
+			if err {
+				reply.Status = BadData
+				return nil
+			}
+			undoKvp[0] = KeyValuePair{userKey, userString}
+			user.Teams = Remove(user.Teams, teamKey)
+			newUserBytes, err := json.Marshal(user)
+			if err != nil {
+				reply.Status = datatypes.BadData
+				return nil
+			}
+			redoKvp[0] = KeyValuePair{userKey, string(newUserBytes)}
+		} else {
+			reply.Status = datatypes.WrongServer
+			return nil
+		}
+		
+		undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
+		redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
+		ss.undoLog[args.TransactionId] = undoLogEntry
+		ss.redoLog[args.TransactionId] = redoLogEntry	
+
+		reply.Status = datatypes.OK
+		return nil		
+
+
+	case op == datatypes.Buy:
+		undoKvp := make([]KeyValuePair, 1)
+		redoKvp := make([]KeyValuePair, 1)
+
+		userKey := "user-" + args.Data.User.UserID
+		teamKey := "team-" + args.Team.Team.TeamID
+
+		if ss.isCorrectServer(userKey){
+			userString, userExists := ss.storage[userKey]
+			if !userExists { 
+				reply.Status = datatypes.NoSuchUser
+				return nil
+			}
+			var user datatypes.User
+			err := json.Unmarshal([]byte(userString), &user)
+			if err {
+				reply.Status = BadData
+				return nil
+			}
+			undoKvp[0] = KeyValuePair{userKey, userString}
+			user.Teams = Remove(user.Teams, teamKey)
+			newUserBytes, err := json.Marshal(user)
+			if err != nil {
+				reply.Status = datatypes.BadData
+				return nil
+			}
+			redoKvp[0] = KeyValuePair{userKey, string(newUserBytes)}
+		} else {
+			reply.Status = datatypes.WrongServer
+			return nil
+		}
+		
+		undoLogEntry := storagerpc.LogEntry{args.TransactionId, undoKvp}
+		redoLogEntry := storagerpc.LogEntry{args.TransactionId, redoKvp}
+		ss.undoLog[args.TransactionId] = undoLogEntry
+		ss.redoLog[args.TransactionId] = redoLogEntry	
+
+		reply.Status = datatypes.OK
+		return nil		
+
+
+	case op == datatypes.Sell:
+
+
+
+
+
 	}
 	return errors.New("Not implemented")
 }
@@ -270,6 +431,24 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 	}
 }
 
+// Does not preserve order
+func Remove(str string, s []string) ([]string){
+	found := false
+	at := 0
+	for i := 0; !found && i < len() &&; i++ {
+		if list[i] == id {
+			found = true
+			at = i
+		}
+	}
+	if !found {
+		return list
+	} else {
+		p := len(list) - 1
+		list[at] = list[p]
+		return list[:p]
+	}
+}
 
 // func (ss *cohortStorageServer) createLogs(args *storagerpc.PrepareArgs){
 // 	switch args.
