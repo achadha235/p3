@@ -21,7 +21,7 @@ type coordinator struct {
 	masterStorageServer *rpc.Client            // RPC connection to masterStorage
 	servers             []storagerpc.Node      // slice of storage servers
 	connections         map[string]*rpc.Client // [hostport] --> client conn
-	nextTransactionId   int
+	nextOperationId     int
 	nextCommitId        int
 }
 
@@ -41,7 +41,7 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 	var servers []storagerpc.Node
 	for t := util.MaxConnectAttempts; ; t-- {
 		err := cli.Call("StorageServer.GetServers", args, reply)
-		if reply.Status == datatypes.OK {
+		if reply.Status == storagerpc.OK {
 			servers = reply.Servers
 			break
 		} else if t <= 0 {
@@ -61,7 +61,7 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 		masterStorageServer: cli,
 		servers:             servers,
 		connections:         conns,
-		nextTransactionId:   1,
+		nextOperationId:     1,
 		nextCommitId:        1,
 	}
 
@@ -78,7 +78,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 	// Add user data on node
 	case datatypes.CreateUser:
 		args := &storagerpc.PrepareArgs{
-			TransactionId: coord.nextTransactionId,
+			TransactionId: coord.nextOperationId,
 			Name:          datatypes.AddUser,
 			Data:          data,
 		}
@@ -86,10 +86,12 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		ss := util.FindServerFromKey(data.User.UserID, coord.servers)
 		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
 
+		coord.nextOperationId++
+
 	// Add team data on node
 	case datatypes.CreateTeam:
 		args := &storagerpc.PrepareArgs{
-			TransactionId: coord.nextTransactionId,
+			TransactionId: coord.nextOperationId,
 			Name:          datatypes.AddTeam,
 			Data:          data,
 		}
@@ -97,11 +99,13 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		ss := util.FindServerFromKey(data.Team.TeamID, coord.servers)
 		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
 
+		coord.nextOperationId++
+
 	// Add user data to team list and vice-versa for the respective nodes
 	case datatypes.JoinTeam:
 		// create args for call to node with team info and update prepareMap
 		teamArgs := &storagerpc.PrepareArgs{
-			TransactionId: coord.nextTransactionId,
+			TransactionId: coord.nextOperationId,
 			Name:          datatypes.AddUserToTeamList,
 			Data:          data,
 		}
@@ -109,9 +113,11 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		ssTeam := util.FindServerFromKey(data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
 
+		coord.nextOperationId++
+
 		// create args for call to node with user info and update prepareMap
 		userArgs := &storagerpc.PrepareArgs{
-			TransactionId: coord.nextTransactionId,
+			TransactionId: coord.nextOperationId,
 			Name:          datatypes.AddTeamToUserList,
 			Data:          data,
 		}
@@ -119,10 +125,12 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
 		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
 
+		coord.nextOperationId++
+
 	// Remove user data from team list and vice-versa for the respective nodes
 	case datatypes.LeaveTeam:
 		teamArgs := &storagerpc.PrepareArgs{
-			TransactionId: coord.nextTransactionId,
+			TransactionId: coord.nextOperationId,
 			Name:          datatypes.RemoveUserFromTeamList,
 			Data:          data,
 		}
@@ -130,14 +138,18 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		ssTeam := util.FindServerFromKey(data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
 
+		coord.nextOperationId++
+
 		userArgs := &storagerpc.PrepareArgs{
-			TransactionId: coord.nextTransactionId,
+			TransactionId: coord.nextOperationId,
 			Name:          datatypes.RemoveTeamFromUserList,
 			Data:          data,
 		}
 
 		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
 		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
+
+		coord.nextOperationId++
 
 	case datatypes.MakeTransaction:
 		var op datatypes.OperationType
@@ -161,21 +173,21 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			}
 
 			teamArgs := &storagerpc.PrepareArgs{
-				TransactionId: coord.nextTransactionId,
+				TransactionId: coord.nextOperationId,
 				Name:          op,
 				Data:          reqData,
 			}
 
 			ss := util.FindServerFromKey(data.Team.TeamID, coord.servers)
 			prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], teamArgs)
+
+			coord.nextOperationId++
 		}
 	default:
 		return datatypes.NoSuchAction, nil
 	}
 
 	stat, err := coord.Propose(prepareMap)
-	coord.nextTransactionId++
-
 	return stat, err
 }
 

@@ -50,7 +50,7 @@ func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
 	// attempt to get the list of servers in the ring from the MasterStorageServers
 	for i := 0; i < util.MaxConnectAttempts; i++ {
 		ls.connections[masterServerHostPort].Call("StorageServer.GetServers", args, reply)
-		if reply.Status != datatypes.OK {
+		if reply.Status != storagerpc.OK {
 			time.Sleep(time.Second)
 			continue
 		} else {
@@ -83,7 +83,7 @@ Here we want to perform some basic checks outside of 2PC such as
 	cases like a balance going invalid should be handled in the 2PC
 */
 
-func (ls *libstore) Get(key string) (string, datatypes.Status, error) {
+func (ls *libstore) Get(key string) (string, storagerpc.Status, error) {
 	args := &storagerpc.GetArgs{Key: key}
 	var reply storagerpc.GetReply
 
@@ -91,14 +91,16 @@ func (ls *libstore) Get(key string) (string, datatypes.Status, error) {
 
 	err := ls.connections[ss.HostPort].Call("StorageServer.Get", args, &reply)
 	if err != nil {
-		return "", datatypes.BadData, err
+		return "", storagerpc.NotReady, err
 	}
 
-	if reply.Status == datatypes.OK {
-		return reply.Value, datatypes.OK, nil
+	if reply.StorageStatus == storagerpc.OK {
+		return reply.Value, storagerpc.OK, nil
 	}
 
-	return "", reply.Status, nil
+	// TODO: Handle the storagerpc status.
+
+	return "", reply.StorageStatus, nil
 }
 
 /* Transact performs basic checks such as whether a user/team
@@ -168,5 +170,5 @@ func (ls *libstore) checkRequest(req datatypes.Request) datatypes.Status {
 func (ls *libstore) checkExists(id string) bool {
 	_, status, _ := ls.Get(id)
 	// if status is OK then the id was found on the node
-	return status == datatypes.OK
+	return status == storagerpc.OK
 }

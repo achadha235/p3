@@ -18,6 +18,7 @@ const (
 	NoSuchTicker                           // Specified stock does not exist
 	NoSuchAction                           // Specified action not supported
 	NoSuchSession                          // Specified session key does not exist
+	NoSuchHolding                          // Specified holding not found
 	InsufficientQuantity                   // Desired action cannot be fulfilled; lack of money/shares
 	Exists                                 // User/team already exists or user is already on team
 	PermissionDenied                       // User does not have permission to do the task
@@ -66,10 +67,10 @@ type User struct {
 // struct used to represent a team
 type Team struct {
 	TeamID   string
-	Users    []string  // list of userIDs of users that are on the team
-	HashPW   string    // hashed PW
-	Balance  uint64    // balance in cents
-	Holdings []Holding // list of holding IDs
+	Users    []string // list of userIDs of users that are on the team
+	HashPW   string   // hashed PW
+	Balance  uint64   // balance in cents
+	Holdings []string // list of holding IDs
 }
 
 type Ticker struct {

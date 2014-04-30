@@ -1,7 +1,7 @@
 package util
 
 import (
-	"github.com/achadha235/p3/rpc/storagerpc"
+	"achadha235/p3/rpc/storagerpc"
 	"hash/fnv"
 	"net/rpc"
 )
