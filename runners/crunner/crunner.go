@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -37,7 +38,7 @@ func init() {
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Start Usage: -port=<portnum>")
 		fmt.Fprintln(os.Stderr, "The crunner program is a testing tool that that creates and runs an instance")
-		fmt.Fprintln(os.Stderr, "of the StockClient. Used to test StockServer calls.\n")
+		fmt.Fprintln(os.Stderr, "of the StockClient. Used to test StockServer calls.")
 		fmt.Fprintln(os.Stderr, "After calling login, the client receives a sessionKey that must be used for")
 		fmt.Fprintln(os.Stderr, "authentication for further requests involving the user's identity")
 		fmt.Fprintln(os.Stderr, "Usage:")
@@ -62,7 +63,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	client, err := stockclient.NewStockClient("localhost", *port)
+	client, err := stockclient.NewStockClient(net.JoinHostPort("localhost", strconv.Itoa(*port)))
 	if err != nil {
 		log.Fatalln("Failed to create StockClient:", err)
 	}

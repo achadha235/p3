@@ -5,17 +5,15 @@ package stockclient
 import (
 	"achadha235/p3/datatypes"
 	"achadha235/p3/rpc/stockrpc"
-	"net"
 	"net/rpc"
-	"strconv"
 )
 
 type stockClient struct {
 	client *rpc.Client
 }
 
-func NewStockClient(host string, port int) (StockClient, error) {
-	cli, err := rpc.DialHTTP("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+func NewStockClient(hostport string) (StockClient, error) {
+	cli, err := rpc.DialHTTP("tcp", hostport)
 	if err != nil {
 		return nil, err
 	}

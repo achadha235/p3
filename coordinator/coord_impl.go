@@ -4,8 +4,6 @@ import (
 	"achadha235/p3/datatypes"
 	"achadha235/p3/rpc/storagerpc"
 	"achadha235/p3/util"
-	/*	"errors"*/
-	/*	"log"*/
 	"net/rpc"
 	"time"
 )
@@ -22,7 +20,6 @@ type coordinator struct {
 	servers             []storagerpc.Node      // slice of storage servers
 	connections         map[string]*rpc.Client // [hostport] --> client conn
 	nextOperationId     int
-	nextCommitId        int
 }
 
 // [hostport] --> slice of prepareArgs for operations that the node must execute
@@ -62,7 +59,6 @@ func StartCoordinator(masterServerHostPort string) (Coordinator, error) {
 		servers:             servers,
 		connections:         conns,
 		nextOperationId:     1,
-		nextCommitId:        1,
 	}
 
 	return coord, nil

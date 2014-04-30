@@ -6,13 +6,15 @@ import (
 )
 
 type Status int
+
 const (
-	OK Status  = iota + 1
-	NotReady 
+	OK Status = iota + 1
+	NotReady
 	KeyNotFound
 )
 
 type CommitStatus int
+
 const (
 	Commit = iota
 	Rollback
@@ -50,16 +52,6 @@ type TransactionData struct {
 	jsonString string
 }
 
-type KeyValuePair {
-	Key string
-	Value string
-}
-
-type LogEntry struct {
-	TransactionId int
-	Ops []KeyValuePair
-}
-
 type RegisterServerArgs struct {
 }
 
@@ -75,7 +67,6 @@ type GetServersReply struct {
 	Status  datatypes.Status
 	Servers []Node
 }
-
 
 type PrepareArgs struct {
 	TransactionId int
@@ -100,9 +91,9 @@ type GetArgs struct {
 }
 
 type GetReply struct {
-	Key    string
-	Value  string
-	Status datatypes.Status
+	Key           string
+	Value         string
+	Status        datatypes.Status
 	StorageStatus Status
 }
 

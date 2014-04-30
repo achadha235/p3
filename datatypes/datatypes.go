@@ -54,7 +54,7 @@ type Holding struct {
 // request structure for a single action (buy/sell in v0)
 type Request struct {
 	Action, TeamID, Ticker string
-	Quantity               int
+	Quantity               uint64
 }
 
 // struct used to represent a user
@@ -67,10 +67,10 @@ type User struct {
 // struct used to represent a team
 type Team struct {
 	TeamID   string
-	Users    []string // list of userIDs of users that are on the team
-	HashPW   string   // hashed PW
-	Balance  uint64   // balance in cents
-	Holdings []string // list of holding IDs
+	Users    []string          // list of userIDs of users that are on the team
+	HashPW   string            // hashed PW
+	Balance  uint64            // balance in cents
+	Holdings map[string]string // map[<tickerID>] --> holdingKey (holding-<teamID>-<tickerID>)
 }
 
 type Ticker struct {
