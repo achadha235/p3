@@ -14,7 +14,7 @@ type testFunc struct {
 }
 
 var (
-	hostport   = flag.String("hostport", "localhost:9000", "StockServer hostport")
+	hostport   = flag.String("hostport", "localhost:9009", "StockServer hostport")
 	client     stockclient.StockClient
 	sessionKey []byte
 )

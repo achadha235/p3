@@ -40,20 +40,27 @@ STORAGE_PORT=$(((RANDOM % 10000) + 10000))
 STOCK_PORT=$(((RANDOM % 10000) + 10000))
 STORAGE_SERVER=$GOPATH/bin/srunner
 STOCK_SERVER=$GOPATH/bin/strunner
-TESTER = $GOPATH/bin/tester
+TESTER=$GOPATH/src/github.com/achadha235/p3/tests
 
 # Start an instance of the storage server.
-${STORAGE_SERVER} -port=${STORAGE_PORT} &
+${STORAGE_SERVER} &
 STORAGE_SERVER_PID=$!
+sleep 1
 
 # Start an instance of the stock server.
-${STOCK_SERVER} -port=${STOCK_PORT} &
+${STOCK_SERVER} localhost:9009&
 STOCK_SERVER_PID=$!
 
 sleep 5
 
 # Start the test.
-${TESTER} -host="localhost:${STOCK_PORT}" "localhost:${STORAGE_PORT}"
+echo $TESTER
+go build $TESTER/tester/basic.go
+echo built tests
+sleep 1
+cd .$TESTER 
+./basic stocktest -hostport=localhost:9009
+#${TESTER} -host="localhost:9009" "localhost:9009"
 
 # Kill the stock server
 kill -9 ${STOCK_SERVER_PID}

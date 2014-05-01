@@ -196,6 +196,9 @@ func (ss *cohortStorageServer) RegisterServer(args *storagerpc.RegisterArgs, rep
 }
 
 func (ss *cohortStorageServer) setTickers() {
+
+
+
 	ss.tickers["APPL"] = 500
 	ss.tickers["POM"] = 26
 	ss.tickers["CHRW"] = 59
@@ -213,10 +216,10 @@ func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storag
 			return errors.New("Commit without prepare not possible")
 		}
 		for i := 0; i < len(commitLog.Logs); i++ {
-			//mtx := ss.getOrCreateRWMutex(commitLog.Logs[i].Key)
-			//mtx.Lock()
+			mtx := ss.getOrCreateRWMutex(commitLog.Logs[i].Key)
+			mtx.Lock()
 			ss.storage[commitLog.Logs[i].Key] = commitLog.Logs[i].Value
-			//mtx.Unlock()
+			mtx.Unlock()
 		}
 
 	} else {
