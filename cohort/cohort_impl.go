@@ -207,7 +207,6 @@ func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storag
 	var exists bool
 	var commitLog LogEntry
 	if args.Status == storagerpc.Commit {
-		defer log.Println("Transaction ", args.TransactionId, " commited:", ss.storage)
 		commitLog, exists = ss.redoLog[args.TransactionId]
 
 		if !exists {
@@ -434,44 +433,31 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		// In an operation there is only one request
 		req := args.Data.Requests[0]
 		tickerName := req.Ticker
-
-		// keys for lookup in storage map
-		tickerKey := "ticker-" + tickerName
-		teamKey := "team-" + args.Data.Team.TeamID
-		holdingKey := "holding-" + args.Data.Team.TeamID + "-" + tickerName
+		teamKey := "team-" + args.Data.Requests[0].TeamID
+		holdingKey := "holding-" + args.Data.Requests[0].TeamID+ "-" + tickerName
 
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
-			reply.Status = datatypes.BadData
+			reply.Status = datatypes.NoSuchTeam
 			return errors.New("Wrong Server")
 		}
-
 		teamStr, ok := ss.storage[teamKey]
 		if !ok {
 			reply.Status = datatypes.NoSuchTeam
 			return nil
 		}
-
 		var team datatypes.Team
 		err := json.Unmarshal([]byte(teamStr), &team)
 		if err != nil {
 			reply.Status = datatypes.BadData
 			return nil
 		}
-
-		tickerStr, ok := ss.storage[tickerKey]
+		price, ok := ss.tickers[tickerName]
 		if !ok {
 			reply.Status = datatypes.NoSuchTicker
 			return nil
 		}
 
-		var ticker datatypes.Ticker
-		err = json.Unmarshal([]byte(tickerStr), &ticker)
-		if err != nil {
-			reply.Status = datatypes.BadData
-			return nil
-		}
-
-		cost := req.Quantity * ticker.Price
+		cost := req.Quantity * price
 		var newBalance uint64
 		if newBalance = team.Balance - cost; newBalance < 0 {
 			reply.Status = datatypes.InsufficientQuantity
@@ -483,7 +469,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 		var holding datatypes.Holding
 		var oldValue string
-		if holdingStr, ok := team.Holdings[tickerName]; !ok {
+		if holdingStr, ok := ss.storage[team.Holdings[tickerName]]; !ok {
 			// no holding exists for requested ticker
 			oldValue = ""
 			holding = datatypes.Holding{
@@ -538,11 +524,13 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		tickerName := req.Ticker
 
 		// keys for lookup in storage map
-		tickerKey := "ticker-" + tickerName
-		teamKey := "team-" + args.Data.Team.TeamID
+		//tickerKey := "ticker-" + tickerName
+		teamKey := "team-" + args.Data.Requests[0].TeamID
+		//holdingKey := "holding-" + args.Data.Requests[0].TeamID+ "-" + tickerName
+
 		/*		holdingKey := "holding-" + args.Data.TeamID + "-" + tickerName*/
 
-		if !ss.isCorrectServer(args.Data.Team.TeamID) {
+		if !ss.isCorrectServer(args.Data.Requests[0].TeamID) {
 			reply.Status = datatypes.BadData
 			return errors.New("Wrong Server")
 		}
@@ -559,17 +547,17 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			return nil
 		}
 
-		tickerStr, ok := ss.storage[tickerKey]
+		price, ok := ss.tickers[tickerName]
 		if !ok {
 			reply.Status = datatypes.NoSuchTicker
 			return nil
 		}
-		var ticker datatypes.Ticker
-		err = json.Unmarshal([]byte(tickerStr), &ticker)
-		if err != nil {
-			reply.Status = datatypes.BadData
-			return nil
-		}
+		// var ticker datatypes.Ticker
+		// err = json.Unmarshal([]byte(tickerStr), &ticker)
+		// if err != nil {
+		// 	reply.Status = datatypes.BadData
+		// 	return nil
+		// }
 
 		// if no holding found, then you can't sell anything
 		holdingKey, ok := team.Holdings[tickerName]
@@ -602,7 +590,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 		undoKVP = append(undoKVP, KeyValuePair{Key: teamKey, Value: teamStr}, KeyValuePair{Key: holdingKey, Value: holdingStr})
 
-		profit := ticker.Price * req.Quantity
+		profit := price * req.Quantity
 
 		// update the new balance
 		team.Balance += profit
@@ -626,7 +614,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			redoKVP = append(redoKVP, KeyValuePair{Key: holdingKey, Value: string(newHoldingBytes)})
 		}
 
-		newTeamBytes, err := json.Marshal(holding)
+		newTeamBytes, err := json.Marshal(team)
 		if err != nil {
 			reply.Status = datatypes.BadData
 			return nil

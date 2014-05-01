@@ -186,8 +186,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 // Propose receives a map of [hostport] --> [prepareArgs] for that node to execute
 // and makes async RPC calls to involved nodes to Prepare for 2PC
 func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, error) {
-	log.Println("Enter Propose")
-	defer log.Println("Exit Propose")
 
 	// Prepare for transaction
 
@@ -195,8 +193,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 	resultStatus := datatypes.OK
 
 	// channel to receive async replies from CohortServers
-	log.Println("Length of servers", len(coord.servers))
-	doneCh := make(chan *rpc.Call, 100)
+	doneCh := make(chan *rpc.Call, 3*len(prepareMap))
 
 	// send out Prepare call to all nodes
 	responsesToExpect := 0
@@ -221,7 +218,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 	// receive replies from prepare
 	for i := 0; i < responsesToExpect; i++ {
 		rpcReply := <-doneCh
-		log.Println("rpc reply", rpcReply)
+		// log.Println("rpc reply", rpcReply.Reply.(*storagerpc.PrepareReply).Status == datatypes.)
 
 		// if RPC fails or non-OK status then Rollback
 		replyStatus := rpcReply.Reply.(*storagerpc.PrepareReply).Status

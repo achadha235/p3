@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"time"
+	"strconv"
 )
 
 const (
@@ -235,8 +236,6 @@ func (ss *stockServer) LeaveTeam(args *stockrpc.LeaveTeamArgs, reply *stockrpc.L
 	}
 
 	// attempt to remove user from team
-	log.Println("In Leave team....")
-	log.Println("calling transact....")
 	status, err := ss.ls.Transact(datatypes.LeaveTeam, data)
 	if err != nil {
 		return err
@@ -248,11 +247,6 @@ func (ss *stockServer) LeaveTeam(args *stockrpc.LeaveTeamArgs, reply *stockrpc.L
 
 func (ss *stockServer) MakeTransaction(args *stockrpc.MakeTransactionArgs, reply *stockrpc.MakeTransactionReply) error {
 	// retrieve userID from session
-
-	log.Println("Got transaction request", args.Requests)
-
-
-
 	userID, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
 		reply.Status = datatypes.NoSuchSession
@@ -266,7 +260,7 @@ func (ss *stockServer) MakeTransaction(args *stockrpc.MakeTransactionArgs, reply
 		Requests: args.Requests,
 	}
 
-	status, err := ss.ls.Transact(storagerpc.MakeTransaction, data)
+	status, err := ss.ls.Transact(datatypes.MakeTransaction, data)
 	if err != nil {
 		return err
 	}
@@ -295,7 +289,6 @@ func (ss *stockServer) GetPortfolio(args *stockrpc.GetPortfolioArgs, reply *stoc
 	}
 
 	// get holdings from IDs
-	var holding datatypes.Holding
 	holdings := make([]datatypes.Holding, 0, len(team.Holdings))
 	for _, holdingKey := range team.Holdings {
 		holdingData, status, err := ss.ls.Get(holdingKey)
@@ -306,14 +299,13 @@ func (ss *stockServer) GetPortfolio(args *stockrpc.GetPortfolioArgs, reply *stoc
 			reply.Status = datatypes.NoSuchHolding
 			return nil
 		}
-
-		err = json.Unmarshal([]byte(holdingData), &holding)
+		var newHolding datatypes.Holding
+		err = json.Unmarshal([]byte(holdingData), &newHolding)
 		if err != nil {
 			reply.Status = datatypes.BadData
 			return err
 		}
-
-		holdings = append(holdings, holding)
+		holdings = append(holdings, newHolding)
 	}
 
 	reply.Stocks = holdings
@@ -323,8 +315,8 @@ func (ss *stockServer) GetPortfolio(args *stockrpc.GetPortfolioArgs, reply *stoc
 }
 
 func (ss *stockServer) GetPrice(args *stockrpc.GetPriceArgs, reply *stockrpc.GetPriceReply) error {
-	tickerKey := util.CreateTickerKey(args.Ticker)
-	tickerData, status, err := ss.ls.Get(tickerKey)
+	// tickerKey := util.CreateTickerKey(args.Ticker)
+	price, status, err := ss.ls.Get("ticker-"+args.Ticker)
 	if err != nil {
 		reply.Status = datatypes.BadData
 		return err
@@ -333,14 +325,17 @@ func (ss *stockServer) GetPrice(args *stockrpc.GetPriceArgs, reply *stockrpc.Get
 		return nil
 	}
 
-	var ticker datatypes.Ticker
-	err = json.Unmarshal([]byte(tickerData), &ticker)
+	// var ticker datatypes.Ticker
+	// err = json.Unmarshal([]byte(tickerData), &ticker)
+	// if err != nil {
+	// 	reply.Status = datatypes.BadData
+	// 	return err
+	// }
+	i, err := strconv.ParseUint(price, 10, 64)
 	if err != nil {
-		reply.Status = datatypes.BadData
-		return err
+		log.Println("Error parsing stock price");
 	}
-
-	reply.Price = ticker.Price
+	reply.Price = i
 	reply.Status = datatypes.OK
 
 	return nil
