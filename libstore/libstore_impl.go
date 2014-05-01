@@ -153,9 +153,10 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 		log.Println("In leave team case inside transact....")
 		log.Println("LEAVING FROM ", data.Team.TeamID)
 
+
 		if !ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.NoSuchUser, nil
-		} else if !ls.checkExists("team- " + data.Team.TeamID) {
+		} else if !ls.checkExists("team-" + data.Team.TeamID) {
 			return datatypes.NoSuchTeam, nil
 		}
 		log.Println("performing leave transaction...")
