@@ -6,6 +6,7 @@ import (
 	"github.com/achadha235/p3/datatypes"
 	"github.com/achadha235/p3/rpc/stockrpc"
 	"net/rpc"
+	"log"
 )
 
 type stockClient struct {
@@ -49,6 +50,9 @@ func (sc *stockClient) CreateTeam(sessionKey []byte, teamID, password string) (d
 }
 
 func (sc *stockClient) JoinTeam(sessionKey []byte, teamID, password string) (datatypes.Status, error) {
+	log.Println("Joining team")
+	defer log.Println("Joining team returning")
+
 	args := &stockrpc.JoinTeamArgs{TeamID: teamID, Password: password, SessionKey: sessionKey}
 	var reply stockrpc.JoinTeamReply
 	if err := sc.client.Call("StockServer.JoinTeam", args, &reply); err != nil {
@@ -58,6 +62,7 @@ func (sc *stockClient) JoinTeam(sessionKey []byte, teamID, password string) (dat
 }
 
 func (sc *stockClient) LeaveTeam(sessionKey []byte, teamID string) (datatypes.Status, error) {
+
 	args := &stockrpc.LeaveTeamArgs{TeamID: teamID, SessionKey: sessionKey}
 	var reply stockrpc.LeaveTeamReply
 	if err := sc.client.Call("StockServer.LeaveTeam", args, &reply); err != nil {

@@ -129,7 +129,6 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 		if ls.checkExists("team-" + data.Team.TeamID) {
 			return datatypes.Exists, nil
 		}
-
 		// Coordinator does rest
 		status, err := ls.coord.PerformTransaction(name, *data)
 		return status, err
@@ -137,22 +136,29 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 	// Check if user and team exists for both JoinTeam/LeaveTeam
 	case datatypes.JoinTeam:
 
+
 		if !ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.NoSuchUser, nil
 		} else if !ls.checkExists("team-" + data.Team.TeamID) {
 			return datatypes.NoSuchTeam, nil
 		}
 		status, err := ls.coord.PerformTransaction(name, *data)
+		log.Println("Libstore - Perform transaction complete ")
+
 		return status, err
 
 
 	case datatypes.LeaveTeam:
+		// never enters this case...??
+		log.Println("In leave team case inside transact....")
+		log.Println("LEAVING FROM ", data.Team.TeamID)
+
 		if !ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.NoSuchUser, nil
 		} else if !ls.checkExists("team- " + data.Team.TeamID) {
 			return datatypes.NoSuchTeam, nil
 		}
-
+		log.Println("performing leave transaction...")
 		status, err := ls.coord.PerformTransaction(name, *data)
 		return status, err
 

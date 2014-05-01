@@ -102,7 +102,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		}
 		ssTeam := util.FindServerFromKey("team-"+data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
-		log.Println("Prepare map after team", prepareMap)		
 		coord.nextOperationId++
 
 		// create args for call to node with user info and update prepareMap
@@ -114,12 +113,12 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 
 		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
 		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
-		log.Println("Prepare map after user", prepareMap)		
 
 		coord.nextOperationId++
 
 	// Remove user data from team list and vice-versa for the respective nodes
 	case datatypes.LeaveTeam:
+		log.Println("Calling leave team transaction") // Never reaches this line
 		teamArgs := &storagerpc.PrepareArgs{
 			TransactionId: coord.nextOperationId,
 			Name:          datatypes.RemoveUserFromTeamList,
@@ -128,7 +127,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 
 		ssTeam := util.FindServerFromKey(data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
-
 		coord.nextOperationId++
 
 		userArgs := &storagerpc.PrepareArgs{
@@ -143,7 +141,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		coord.nextOperationId++
 
 	case datatypes.MakeTransaction:
-		log.Println("Performing transaction...", data)
 
 		var op datatypes.OperationType
 		for i := 0; i < len(data.Requests); i++ {
@@ -180,6 +177,8 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 		return datatypes.NoSuchAction, nil
 	}
 
+
+
 	stat, err := coord.Propose(prepareMap)
 	return stat, err
 }
@@ -187,15 +186,17 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 // Propose receives a map of [hostport] --> [prepareArgs] for that node to execute
 // and makes async RPC calls to involved nodes to Prepare for 2PC
 func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, error) {
+	log.Println("Enter Propose")
+	defer log.Println("Exit Propose")
+
 	// Prepare for transaction
-	log.Println("About to prepare", prepareMap)
-	defer log.Println("Prepare complete")
 
 	stat := storagerpc.CommitStatus(storagerpc.Commit)
 	resultStatus := datatypes.OK
 
 	// channel to receive async replies from CohortServers
-	doneCh := make(chan *rpc.Call, len(coord.servers))
+	log.Println("Length of servers", len(coord.servers))
+	doneCh := make(chan *rpc.Call, 100)
 
 	// send out Prepare call to all nodes
 	responsesToExpect := 0
@@ -205,12 +206,12 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 			if err != nil {
 				return datatypes.BadData, err
 			}
-
 			coord.connections[hostport] = cli
 		}
 
 		for i := 0; i < len(argsList); i++ {
 			prepareArgs := argsList[i]
+			log.Println("prepare args", prepareArgs)
 			var prepareReply storagerpc.PrepareReply
 			coord.connections[hostport].Go("CohortStorageServer.Prepare", prepareArgs, &prepareReply, doneCh)
 			responsesToExpect++
@@ -220,23 +221,26 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 	// receive replies from prepare
 	for i := 0; i < responsesToExpect; i++ {
 		rpcReply := <-doneCh
+		log.Println("rpc reply", rpcReply)
 
 		// if RPC fails or non-OK status then Rollback
 		replyStatus := rpcReply.Reply.(*storagerpc.PrepareReply).Status
 		if rpcReply.Error != nil || replyStatus != datatypes.OK {
 			resultStatus = replyStatus
 			stat = storagerpc.Rollback
+			log.Println("rollback")
+
 		}
 	}
 
 	// send the Commit call to all nodes with the updated status
-	log.Println("Sending Commit message...", stat)
 	for hostport, args := range prepareMap {
 		for i := 0; i < len(prepareMap[hostport]); i++ {
 			commitArgs := &storagerpc.CommitArgs{
 				TransactionId: args[i].TransactionId,
 				Status:        stat,
 			}
+			log.Println("commit")
 
 			var commitReply *storagerpc.CommitReply
 			coord.connections[hostport].Go("CohortStorageServer.Commit", commitArgs, &commitReply, doneCh)
@@ -245,14 +249,15 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 
 	// receive Ack from all nodes
 	for i := 0; i < responsesToExpect; i++ {
-		rpcReply := <-doneCh
-
+		rpcReply := <- doneCh
 		// TODO: if RPC fails then retry sending message until all received (?)
+		log.Println("commit response")
+
 		if rpcReply.Error != nil {
 			return 0, rpcReply.Error
 		}
 	}
-	log.Println("Got response", resultStatus)
+	log.Println("done")
 
 	return datatypes.Status(resultStatus), nil
 }

@@ -150,15 +150,15 @@ func (ss *stockServer) CreateUser(args *stockrpc.CreateUserArgs, reply *stockrpc
 // CreateTeam adds a team to the game, or returns Exists if teamID is already in use
 func (ss *stockServer) CreateTeam(args *stockrpc.CreateTeamArgs, reply *stockrpc.CreateTeamReply) error {
 	// lookup userID based on session
-	userID, err := ss.RetrieveSession(args.SessionKey)
+	_, err := ss.RetrieveSession(args.SessionKey)
 	if err != nil {
 		reply.Status = datatypes.NoSuchSession
 		return nil
 	}
 
-	// Add user to the team he created
+	// Add user to the team he created. 
 	userList := make([]string, 0)
-	userList = append(userList, userID)
+	// userList = append(userList, userID)
 
 	// Create team pw
 	hashed, err := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
@@ -235,7 +235,9 @@ func (ss *stockServer) LeaveTeam(args *stockrpc.LeaveTeamArgs, reply *stockrpc.L
 	}
 
 	// attempt to remove user from team
-	status, err := ss.ls.Transact(storagerpc.LeaveTeam, data)
+	log.Println("In Leave team....")
+	log.Println("calling transact....")
+	status, err := ss.ls.Transact(datatypes.LeaveTeam, data)
 	if err != nil {
 		return err
 	}

@@ -207,23 +207,21 @@ func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storag
 	var exists bool
 	var commitLog LogEntry
 	if args.Status == storagerpc.Commit {
+		defer log.Println("Transaction ", args.TransactionId, " commited:", ss.storage)
 		commitLog, exists = ss.redoLog[args.TransactionId]
-		log.Println("Got a commit. Printing log entry", commitLog, exists )
 
 		if !exists {
 			return errors.New("Commit without prepare not possible")
 		}
 		for i := 0; i < len(commitLog.Logs); i++ {
-			mtx := ss.getOrCreateRWMutex(commitLog.Logs[i].Key)
-			mtx.Lock()
+			//mtx := ss.getOrCreateRWMutex(commitLog.Logs[i].Key)
+			//mtx.Lock()
 			ss.storage[commitLog.Logs[i].Key] = commitLog.Logs[i].Value
-
-			mtx.Unlock()
+			//mtx.Unlock()
 		}
 
 	} else {
 		commitLog, exists = ss.undoLog[args.TransactionId]
-		log.Println("Got an abort. Don't do anything" )
 	}
 
 	return nil
@@ -244,8 +242,6 @@ func (ss *cohortStorageServer) UpdateLogs(transactionId int, undoKVP, redoKVP []
 }
 
 func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *storagerpc.PrepareReply) error {
-	log.Println("Got a prepare message for tx id ", args.TransactionId, args.Name)
-
 	op := args.Name
 	switch {
 	case op == datatypes.AddUser:
@@ -292,98 +288,80 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		return nil
 
 	case op == datatypes.AddUserToTeamList:
-		log.Println("Adding user to team list...")
 
 		teamKey := "team-" + args.Data.Team.TeamID
-		log.Println(ss.servers)
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
 			reply.Status = datatypes.BadData
-			log.Println("Wrong server")
 			return errors.New("Wrong Server")
 		}
 
 		teamString, teamExists := ss.storage[teamKey]
 		if !teamExists {
 			reply.Status = datatypes.NoSuchTeam
-			log.Println("No such team")
-
 			return nil
 		}
 		var team datatypes.Team
 		err := json.Unmarshal([]byte(teamString), &team)
 		if err != nil {
 			reply.Status = datatypes.BadData
-			log.Println("Bad data")
-
 			return nil
 		}
 
 		err = bcrypt.CompareHashAndPassword([]byte(team.HashPW), []byte(args.Data.Pw))
 		if err != nil {
 			reply.Status = datatypes.PermissionDenied
-
-			log.Println("PermissionDenied")
-
 			return nil
 		}
 
-		team.Users = append(team.Users, args.Data.User.UserID)
+		team.Users = add(team.Users, args.Data.User.UserID)
 		newTeamBytes, err := json.Marshal(team)
 		if err != nil {
 			reply.Status = datatypes.BadData
-			log.Println("Bad data")
-
 			return nil
 		}
 
 		undoKvp := []KeyValuePair{KeyValuePair{Key: teamKey, Value: teamString}}
 		redoKvp := []KeyValuePair{KeyValuePair{Key: teamKey, Value: string(newTeamBytes)}}
-		log.Println("Successfully prepared")
 
 		ss.UpdateLogs(args.TransactionId, undoKvp, redoKvp)
 		reply.Status = datatypes.OK
 		return nil
 
 	case op == datatypes.AddTeamToUserList:
-		log.Println("Adding team to user list...")
 
 		userKey := "user-" + args.Data.User.UserID
 
 		if !ss.isCorrectServer(args.Data.User.UserID) {
 			reply.Status = datatypes.BadData
-			log.Println("Wrong server")
 			return errors.New("Wrong Server")
 		}
 
 		userString, userExists := ss.storage[userKey]
 		if !userExists {
 			reply.Status = datatypes.NoSuchUser
-			log.Println("No such user")
 			return nil
 		}
 		var user datatypes.User
 		err := json.Unmarshal([]byte(userString), &user)
 		if err != nil {
 			reply.Status = datatypes.BadData
-			log.Println("Bad data")
 			return nil
 		}
-		user.Teams = append(user.Teams, args.Data.Team.TeamID)
+		user.Teams = add(user.Teams, args.Data.Team.TeamID)
 		newUserBytes, err := json.Marshal(user)
 		if err != nil {
 			reply.Status = datatypes.BadData
-			log.Println("Bad data")
 			return nil
 		}
 
 		undoKvp := []KeyValuePair{KeyValuePair{Key: userKey, Value: userString}}
 		redoKvp := []KeyValuePair{KeyValuePair{Key: userKey, Value: string(newUserBytes)}}
-		log.Println("Successfully prepared")
 		ss.UpdateLogs(args.TransactionId, undoKvp, redoKvp)
 		reply.Status = datatypes.OK
 		return nil
 
 	case op == datatypes.RemoveUserFromTeamList:
+
 		teamKey := "team-" + args.Data.Team.TeamID
 
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
@@ -418,6 +396,8 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		return nil
 
 	case op == datatypes.RemoveTeamFromUserList:
+
+
 		userKey := "user-" + args.Data.User.UserID
 
 		if !ss.isCorrectServer(args.Data.User.UserID) {
@@ -708,7 +688,7 @@ func (ss *cohortStorageServer) getOrCreateRWMutex(key string) *sync.RWMutex {
 
 func (ss *cohortStorageServer) GetServers(args *storagerpc.GetServersArgs, reply *storagerpc.GetServersReply) error {
 	if len(ss.servers) < ss.numNodes {
-		log.Println("Not ready")
+		log.Println("Not Ready")
 		reply.Status = storagerpc.NotReady
 		return nil
 	}
@@ -745,4 +725,13 @@ func remove(list []string, id string) []string {
 	}
 
 	return list
+}
+
+func add(list []string, id string) []string {
+	for i := 0; i < len(list); i++ {
+		if list[i] == id {
+			return list
+		}
+	}
+	return append(list, id)
 }
