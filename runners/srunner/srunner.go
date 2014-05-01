@@ -16,7 +16,6 @@ import (
 const defaultMasterPort = 9009
 
 var (
-	port           = flag.Int("port", defaultMasterPort, "port number to listen on")
 	masterHostPort = flag.String("master", "", "master storage server host port (if non-empty then this storage server is a slave)")
 	selfHostPort   = flag.String("self", "localhost:9009", "self hostport")
 	numNodes       = flag.Int("N", 1, "the number of nodes in the ring (including the master)")
@@ -29,10 +28,6 @@ func init() {
 
 func main() {
 	flag.Parse()
-	if *masterHostPort == "" && *port == 0 {
-		// If masterHostPort string is empty, then this storage server is the master.
-		*port = defaultMasterPort
-	}
 
 	// If nodeID is 0, then assign a random 32-bit integer instead.
 	randID := uint32(*nodeID)

@@ -14,7 +14,7 @@ type testFunc struct {
 }
 
 var (
-	hostport   = flag.String("hostport", "localhost:9009", "StockServer hostport")
+	hostport   = flag.String("server", "localhost", "StockServer hostport")
 	client     stockclient.StockClient
 	sessionKey []byte
 )
@@ -42,19 +42,19 @@ func initStockClient(stockServerHostPort string) error {
 	}
 
 	client = cli
-	status, err := client.CreateUser("user", "pass")
-	if err != nil {
-		LOGE.Println("FAIL: Could not create user. Received status: ", statusMap[status])
-		return err
-	}
+	/*	status, err := client.CreateUser("user", "pass")
+		if err != nil {
+			LOGE.Println("FAIL: Could not create user. Received status: ", statusMap[status])
+			return err
+		}
 
-	status, key, err := client.LoginUser("user", "pass")
-	if err != nil {
-		LOGE.Println("FAIL: Could not login. Received status: ", statusMap[status])
-		return err
-	}
+		status, key, err := client.LoginUser("user", "pass")
+		if err != nil {
+			LOGE.Println("FAIL: Could not login. Received status: ", statusMap[status])
+			return err
+		}
 
-	sessionKey = key
+		sessionKey = key*/
 
 	return nil
 }
@@ -262,8 +262,8 @@ func main() {
 	_ = tests
 
 	flag.Parse()
-	if flag.NArg() < 1 {
-		LOGE.Fatalln("Usage: stocktest -host=<hostport>")
+	if flag.NFlag() < 1 {
+		LOGE.Fatalln("Usage: -server=<hostport>")
 	}
 
 	if err := initStockClient(*hostport); err != nil {

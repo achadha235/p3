@@ -5,8 +5,8 @@ package stockclient
 import (
 	"github.com/achadha235/p3/datatypes"
 	"github.com/achadha235/p3/rpc/stockrpc"
-	"net/rpc"
 	"log"
+	"net/rpc"
 )
 
 type stockClient struct {
@@ -18,6 +18,8 @@ func NewStockClient(hostport string) (StockClient, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	log.Println("Connected to StockServer at hostname: ", hostport)
 	return &stockClient{client: cli}, nil
 }
 

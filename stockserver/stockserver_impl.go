@@ -13,8 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"time"
 	"strconv"
+	"time"
 )
 
 const (
@@ -50,6 +50,8 @@ func NewStockServer(masterHostPort, myHostPort string) (StockServer, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	log.Println("StockServer listening on address: ", myHostPort)
 
 	err = rpc.RegisterName("StockServer", stockrpc.Wrap(ss))
 	if err != nil {
@@ -157,7 +159,7 @@ func (ss *stockServer) CreateTeam(args *stockrpc.CreateTeamArgs, reply *stockrpc
 		return nil
 	}
 
-	// Add user to the team he created. 
+	// Add user to the team he created.
 	userList := make([]string, 0)
 	// userList = append(userList, userID)
 
@@ -316,7 +318,7 @@ func (ss *stockServer) GetPortfolio(args *stockrpc.GetPortfolioArgs, reply *stoc
 
 func (ss *stockServer) GetPrice(args *stockrpc.GetPriceArgs, reply *stockrpc.GetPriceReply) error {
 	// tickerKey := util.CreateTickerKey(args.Ticker)
-	price, status, err := ss.ls.Get("ticker-"+args.Ticker)
+	price, status, err := ss.ls.Get("ticker-" + args.Ticker)
 	if err != nil {
 		reply.Status = datatypes.BadData
 		return err
@@ -333,7 +335,7 @@ func (ss *stockServer) GetPrice(args *stockrpc.GetPriceArgs, reply *stockrpc.Get
 	// }
 	i, err := strconv.ParseUint(price, 10, 64)
 	if err != nil {
-		log.Println("Error parsing stock price");
+		log.Println("Error parsing stock price")
 	}
 	reply.Price = i
 	reply.Status = datatypes.OK
