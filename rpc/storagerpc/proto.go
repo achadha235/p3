@@ -7,7 +7,7 @@ import (
 type Status int
 
 const (
-	OK Status = iota
+	OK Status = iota + 1
 	NotReady
 	KeyNotFound
 )
@@ -15,7 +15,7 @@ const (
 type CommitStatus int
 
 const (
-	Commit = iota
+	Commit = iota + 1
 	Rollback
 )
 
@@ -28,7 +28,7 @@ type Node struct {
 type TransactionType int
 
 const (
-	CreateUser = iota
+	CreateUser = iota + 1
 	CreateTeam
 	JoinTeam
 	LeaveTeam
