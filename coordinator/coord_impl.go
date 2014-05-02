@@ -118,7 +118,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 
 	// Remove user data from team list and vice-versa for the respective nodes
 	case datatypes.LeaveTeam:
-		log.Println("Calling leave team transaction") // Never reaches this line
 		teamArgs := &storagerpc.PrepareArgs{
 			TransactionId: coord.nextOperationId,
 			Name:          datatypes.RemoveUserFromTeamList,
@@ -208,7 +207,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 
 		for i := 0; i < len(argsList); i++ {
 			prepareArgs := argsList[i]
-			log.Println("prepare args", prepareArgs)
+			//log.Println("prepare args", prepareArgs)
 			var prepareReply storagerpc.PrepareReply
 			coord.connections[hostport].Go("CohortStorageServer.Prepare", prepareArgs, &prepareReply, doneCh)
 			responsesToExpect++
@@ -225,7 +224,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 		if rpcReply.Error != nil || replyStatus != datatypes.OK {
 			resultStatus = replyStatus
 			stat = storagerpc.Rollback
-			log.Println("rollback")
+			log.Println("Rollback")
 
 		}
 	}
@@ -237,7 +236,6 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 				TransactionId: args[i].TransactionId,
 				Status:        stat,
 			}
-			log.Println("commit")
 
 			var commitReply *storagerpc.CommitReply
 			coord.connections[hostport].Go("CohortStorageServer.Commit", commitArgs, &commitReply, doneCh)
@@ -248,13 +246,11 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 	for i := 0; i < responsesToExpect; i++ {
 		rpcReply := <- doneCh
 		// TODO: if RPC fails then retry sending message until all received (?)
-		log.Println("commit response")
 
 		if rpcReply.Error != nil {
 			return 0, rpcReply.Error
 		}
 	}
-	log.Println("done")
 
 	return datatypes.Status(resultStatus), nil
 }
