@@ -55,13 +55,10 @@ func NewLibstore(masterServerHostPort, myHostPort string) (Libstore, error) {
 			time.Sleep(time.Second)
 			continue
 		} else {
-			/*			log.Println("Reply servers: ", reply.Servers)*/
 			ls.storageServers = reply.Servers
 			break
 		}
 	}
-
-	/*	log.Println("SS here: ", ls.storageServers)*/
 
 	// connect to each of the storageServers when we acquire the list
 	for i := 0; i < len(ls.storageServers); i++ {
@@ -91,13 +88,10 @@ func (ls *libstore) Get(key string) (string, storagerpc.Status, error) {
 	args := &storagerpc.GetArgs{Key: key}
 	var reply storagerpc.GetReply
 
-	/*	log.Println("ss: ", ls.storageServers)*/
 	ss, err := util.FindServerFromKey(key, ls.storageServers)
 	if err != nil {
 		log.Println("Unable to parse key")
 	}
-
-	/*	log.Println("Connections on libstore: ", ls.connections)*/
 	err = ls.connections[ss.HostPort].Call("CohortStorageServer.Get", args, &reply)
 	if err != nil {
 		return "", storagerpc.NotReady, err
@@ -106,9 +100,6 @@ func (ls *libstore) Get(key string) (string, storagerpc.Status, error) {
 	if reply.StorageStatus == storagerpc.OK {
 		return reply.Value, storagerpc.OK, nil
 	}
-
-	// TODO: Handle the storagerpc status.
-
 	return "", reply.StorageStatus, nil
 }
 
@@ -122,7 +113,6 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 		if ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.Exists, nil
 		}
-
 		// Coordinator does rest
 		status, err := ls.coord.PerformTransaction(name, *data)
 		return status, err
@@ -149,7 +139,6 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 		return status, err
 
 	case datatypes.LeaveTeam:
-		// never enters this case...??
 		if !ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.NoSuchUser, nil
 		} else if !ls.checkExists("team-" + data.Team.TeamID) {
@@ -185,6 +174,5 @@ func (ls *libstore) checkRequest(req datatypes.Request) datatypes.Status {
 // return true if the key (id) exists
 func (ls *libstore) checkExists(id string) bool {
 	_, status, _ := ls.Get(id)
-	// if status is OK then the id was found on the node
 	return status == storagerpc.OK
 }

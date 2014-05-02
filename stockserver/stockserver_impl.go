@@ -156,10 +156,7 @@ func (ss *stockServer) CreateTeam(args *stockrpc.CreateTeamArgs, reply *stockrpc
 		reply.Status = datatypes.NoSuchSession
 		return nil
 	}
-
-	// Add user to the team he created.
 	userList := make([]string, 0)
-	// userList = append(userList, userID)
 
 	// Create team pw
 	hashed, err := bcrypt.GenerateFromPassword([]byte(args.Password), bcrypt.DefaultCost)
@@ -325,12 +322,6 @@ func (ss *stockServer) GetPrice(args *stockrpc.GetPriceArgs, reply *stockrpc.Get
 		return nil
 	}
 
-	// var ticker datatypes.Ticker
-	// err = json.Unmarshal([]byte(tickerData), &ticker)
-	// if err != nil {
-	// 	reply.Status = datatypes.BadData
-	// 	return err
-	// }
 	i, err := strconv.ParseUint(price, 10, 64)
 	if err != nil {
 		log.Println("Error parsing stock price")

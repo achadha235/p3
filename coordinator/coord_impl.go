@@ -185,7 +185,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, error) {
 
 	// Prepare for transaction
-
 	stat := storagerpc.CommitStatus(storagerpc.Commit)
 	resultStatus := datatypes.OK
 
@@ -215,8 +214,6 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 	// receive replies from prepare
 	for i := 0; i < responsesToExpect; i++ {
 		rpcReply := <-doneCh
-		// log.Println("rpc reply", rpcReply.Reply.(*storagerpc.PrepareReply).Status == datatypes.)
-
 		// if RPC fails or non-OK status then Rollback
 		replyStatus := rpcReply.Reply.(*storagerpc.PrepareReply).Status
 		if rpcReply.Error != nil || replyStatus != datatypes.OK {
@@ -242,8 +239,6 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 	// receive Ack from all nodes
 	for i := 0; i < responsesToExpect; i++ {
 		rpcReply := <-doneCh
-		// TODO: if RPC fails then retry sending message until all received (?)
-
 		if rpcReply.Error != nil {
 			return 0, rpcReply.Error
 		}
