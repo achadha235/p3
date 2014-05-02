@@ -122,6 +122,7 @@ func NewCohortStorageServer(masterHostPort, selfHostPort string, nodeId uint32, 
 	// server is a slave in the ring
 	cli, err := util.TryDial(masterHostPort)
 	if err != nil {
+		log.Println("error: ", err)
 		return nil, err
 	}
 
@@ -129,10 +130,10 @@ func NewCohortStorageServer(masterHostPort, selfHostPort string, nodeId uint32, 
 	slaveNode := storagerpc.Node{HostPort: selfHostPort, NodeId: nodeId, Master: false}
 	args := &storagerpc.RegisterArgs{ServerInfo: slaveNode}
 	var reply storagerpc.RegisterReply
-
 	// break out when status == storagerpc.OK
-	for ; reply.Status == storagerpc.NotReady; time.Sleep(time.Second) {
+	for reply.Status = storagerpc.NotReady; reply.Status == storagerpc.NotReady; time.Sleep(time.Second) {
 		if err := cli.Call("CohortStorageServer.RegisterServer", args, &reply); err != nil {
+			log.Println("Failed to RegisterServer: ", err)
 			return nil, err
 		}
 	}
@@ -166,13 +167,13 @@ func NewCohortStorageServer(masterHostPort, selfHostPort string, nodeId uint32, 
 func (ss *cohortStorageServer) RegisterServer(args *storagerpc.RegisterArgs, reply *storagerpc.RegisterReply) error {
 	// Node not yet seen by MasterServer
 	ss.rw.Lock()
-	defer ss.rw.Unlock()
 	if _, ok := ss.exists[args.ServerInfo.NodeId]; !ok {
 		ss.exists[args.ServerInfo.NodeId] = true
 		ss.servers = append(ss.servers, args.ServerInfo)
 	}
 
 	if len(ss.servers) < ss.numNodes {
+		ss.rw.Unlock()
 		reply.Status = storagerpc.NotReady
 		return nil
 	}
@@ -183,21 +184,20 @@ func (ss *cohortStorageServer) RegisterServer(args *storagerpc.RegisterArgs, rep
 	}
 	By(nodeSorter).Sort(ss.servers)
 
-	for i := 0; i < len(ss.servers); i++ {
+	/*	for i := 0; i < len(ss.servers); i++ {
 		node := ss.servers[i]
 		if args.ServerInfo.NodeId == node.NodeId {
 
 		}
-	}
+	}*/
 
+	ss.rw.Unlock()
 	reply.Status = storagerpc.OK
 	reply.Servers = ss.servers
 	return nil
 }
 
 func (ss *cohortStorageServer) setTickers() {
-
-
 
 	ss.tickers["APPL"] = 500
 	ss.tickers["POM"] = 26
@@ -399,7 +399,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 	case op == datatypes.RemoveTeamFromUserList:
 
-
 		userKey := "user-" + args.Data.User.UserID
 
 		if !ss.isCorrectServer(args.Data.User.UserID) {
@@ -437,7 +436,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		req := args.Data.Requests[0]
 		tickerName := req.Ticker
 		teamKey := "team-" + args.Data.Requests[0].TeamID
-		holdingKey := "holding-" + args.Data.Requests[0].TeamID+ "-" + tickerName
+		holdingKey := "holding-" + args.Data.Requests[0].TeamID + "-" + tickerName
 
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
 			reply.Status = datatypes.NoSuchTeam
@@ -653,7 +652,6 @@ func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.G
 	lock.RLock()
 	value, exists := ss.storage[args.Key]
 
-
 	reply.Value = value
 	if !exists {
 		reply.StorageStatus = storagerpc.KeyNotFound
@@ -679,7 +677,6 @@ func (ss *cohortStorageServer) getOrCreateRWMutex(key string) *sync.RWMutex {
 
 func (ss *cohortStorageServer) GetServers(args *storagerpc.GetServersArgs, reply *storagerpc.GetServersReply) error {
 	if len(ss.servers) < ss.numNodes {
-		log.Println("Not Ready")
 		reply.Status = storagerpc.NotReady
 		return nil
 	}
@@ -694,6 +691,9 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 	if l == 1 {
 		return true
 	}
+
+	log.Println("Key on server: ", key)
+
 	hashed := util.StoreHash(key)
 	last := ss.servers[l-1]
 	if hashed > last.NodeId && ss.servers[0].NodeId == ss.nodeId {
