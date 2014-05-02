@@ -67,7 +67,6 @@ func checkErrorStatus(err error, status, expectedStatus datatypes.Status) bool {
 		LOGE.Println("FAIL: unexpected error returned:", err)
 		return true
 	}
-	log.Println("Recieved status: ", status)
 	if status != expectedStatus {
 		LOGE.Printf("FAIL: incorrect status %s, expected status %s\n", statusMap[status], statusMap[expectedStatus])
 		return true
@@ -192,7 +191,6 @@ func testLeaveTeamValid() bool {
 	_, sessionKey, _ := client.LoginUser("testLeaveTeamValid", "pass")
 	client.CreateTeam(sessionKey, "testLeaveTeamValid", "bye")
 	status, err := client.JoinTeam(sessionKey, "testLeaveTeamValid", "bye")
-	log.Println("JOINED TEAM STATUS: ", statusMap[status], "error", err)
 	time.Sleep(time.Second)
 
 	status, err = client.LeaveTeam(sessionKey, "testLeaveTeamValid")
@@ -218,6 +216,277 @@ func testBuyOneValid() bool {
 	return checkErrorStatus(err, status, datatypes.OK)
 }
 
+func testBuyOneInvalid() bool {
+	client.CreateUser("testBuyOneInvalid", "pass")
+	_, sessionKey, _ := client.LoginUser("testBuyOneInvalid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testBuyOneInvalidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testBuyOneInvalidTeam", "pw")
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testBuyOneInvalidTeam",
+			Ticker: "APPL",
+			Quantity:100000000000,
+		},
+	}
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.InsufficientQuantity)
+}
+
+func testSellOneValid() bool {
+	client.CreateUser("testSellOneValid", "pass")
+	_, sessionKey, _ := client.LoginUser("testSellOneValid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testSellOneValidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testSellOneValidTeam", "pw")
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testSellOneValidTeam",
+			Ticker: "APPL",
+			Quantity:10,
+		},
+	}
+	client.MakeTransaction(sessionKey, reqs)
+	
+	reqs = []datatypes.Request{ 
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testSellOneValidTeam",
+			Ticker: "APPL",
+			Quantity:4,
+		},
+	}	
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.OK)
+}
+
+func testSellOneInvalid() bool {
+	client.CreateUser("testSellOneInvalid", "pass")
+	_, sessionKey, _ := client.LoginUser("testSellOneInvalid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testSellOneInvalidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testSellOneInvalidTeam", "pw")
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testSellOneInvalidTeam",
+			Ticker: "APPL",
+			Quantity:10,
+		},
+	}
+	client.MakeTransaction(sessionKey, reqs)
+	reqs = []datatypes.Request{ 
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testSellOneInvalidTeam",
+			Ticker: "APPL",
+			Quantity:100,
+		},
+	}	
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.InsufficientQuantity)
+}
+
+
+func testBuyMultiValid() bool {
+	client.CreateUser("testBuyMultiValid", "pass")
+	_, sessionKey, _ := client.LoginUser("testBuyMultiValid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testBuyMultiValidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testBuyMultiValidTeam", "pw")
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testBuyMultiValidTeam",
+			Ticker: "APPL",
+			Quantity:10,
+		},
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testBuyMultiValidTeam",
+			Ticker: "POM",
+			Quantity:10,
+		},
+
+	}
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.OK)
+}
+
+func testSellMultiValid() bool {
+	client.CreateUser("testSellMultiValid", "pass")
+	_, sessionKey, _ := client.LoginUser("testSellMultiValid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testSellMultiValidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testSellMultiValidTeam", "pw")
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testSellMultiValidTeam",
+			Ticker: "APPL",
+			Quantity:10,
+		},
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testSellMultiValidTeam",
+			Ticker: "POM",
+			Quantity:50,
+		},
+	}
+
+	client.MakeTransaction(sessionKey, reqs)
+	reqs = []datatypes.Request{ 
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testSellMultiValidTeam",
+			Ticker: "APPL",
+			Quantity:3,
+		},
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testSellMultiValidTeam",
+			Ticker: "POM",
+			Quantity:3,
+		},
+
+	}
+
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.OK)
+}
+
+
+func testBuyMultiInvalid() bool {
+	client.CreateUser("testBuyMultiInvalid", "pass")
+	_, sessionKey, _ := client.LoginUser("testBuyMultiInvalid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testBuyMultiInvalidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testBuyMultiInvalidTeam", "pw")
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testBuyMultiInvalidTeam",
+			Ticker: "POM",
+			Quantity:10,
+		},
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testBuyMultiInvalidTeam",
+			Ticker: "DNB",
+			Quantity:1,
+		},
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testBuyMultiInvalidTeam",
+			Ticker: "APPL",
+			Quantity:100000000000,
+		},
+	}
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.InsufficientQuantity)
+}
+
+func testSellMultiInvalid() bool {
+	client.CreateUser("testSellMultiInvalid", "pass")
+	_, sessionKey, _ := client.LoginUser("testSellMultiInvalid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testSellMultiInvalidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testSellMultiInvalidTeam", "pw")
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testSellMultiInvalidTeam",
+			Ticker: "APPL",
+			Quantity:10,
+		},
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testSellMultiInvalidTeam",
+			Ticker: "POM",
+			Quantity:50,
+		},
+	}
+
+	client.MakeTransaction(sessionKey, reqs)
+	reqs = []datatypes.Request{ 
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testSellMultiInvalidTeam",
+			Ticker: "APPL",
+			Quantity:3,
+		},
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testSellMultiInvalidTeam",
+			Ticker: "POM",
+			Quantity:400,
+		},
+	}
+
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.InsufficientQuantity)
+}
+
+
+func testGetPortfolioValid() bool {
+	client.CreateUser("testGetPortfolioValid", "pass")
+	_, sessionKey, _ := client.LoginUser("testGetPortfolioValid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testGetPortfolioValidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testGetPortfolioValidTeam", "pw")
+
+	startAmount := uint64(50)
+	sellAmount := uint64(10)
+	remaining := startAmount - sellAmount
+
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testGetPortfolioValidTeam",
+			Ticker: "APPL",
+			Quantity:startAmount,
+		},
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testGetPortfolioValidTeam",
+			Ticker: "POM",
+			Quantity:startAmount,
+		},
+
+	}
+	client.MakeTransaction(sessionKey, reqs)
+
+	reqs = []datatypes.Request{ 
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testGetPortfolioValidTeam",
+			Ticker: "APPL",
+			Quantity:sellAmount,
+		},
+		datatypes.Request{
+			Action:"sell",
+			TeamID:"testGetPortfolioValidTeam",
+			Ticker: "POM",
+			Quantity:sellAmount,
+		},
+	}
+	// Check if amount is right
+	holdings, status, err := client.GetPortfolio("testGetPortfolioValidTeam")
+	for i:= 0; i<len(holdings); i++ {
+		if holdings[i].Quantity != remaining {
+			return false
+		}
+	}
+	return checkErrorStatus(err, status, datatypes.OK)
+}
+
+func testGetPortfolioInvalid() bool {
+	_, status, err := client.GetPortfolio("testGetPortfolioInvalid")
+	return checkErrorStatus(err, status, datatypes.NoSuchTeam)
+}
+
+
 func main() {
 	tests := []testFunc{
 		{"testCreateUserValid", testCreateUserValid},
@@ -238,6 +507,16 @@ func main() {
 		{"testLeaveTeamNotOnTeam", testLeaveTeamNotOnTeam},
 		{"testLeaveTeamValid", testLeaveTeamValid},
 		{"testBuyOneValid", testBuyOneValid},
+		{"testBuyOneInvalid", testBuyOneInvalid},
+		{"testSellOneValid", testSellOneValid},
+		{"testSellOneInvalid", testSellOneInvalid},
+		{"testBuyMultiValid", testBuyMultiValid},
+		{"testSellMultValid", testSellMultiValid},
+		{"testBuyMultiInvalid", testBuyMultiInvalid},
+		{"testSellMultiInValid", testSellMultiInvalid},
+
+		{"testGetPortfolioValid", testGetPortfolioValid},
+		{"testGetPortfolioInvalid", testGetPortfolioInvalid},
 	}
 
 	_ = tests

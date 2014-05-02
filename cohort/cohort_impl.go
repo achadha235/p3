@@ -198,7 +198,6 @@ func (ss *cohortStorageServer) RegisterServer(args *storagerpc.RegisterArgs, rep
 }
 
 func (ss *cohortStorageServer) setTickers() {
-
 	ss.tickers["APPL"] = 500
 	ss.tickers["POM"] = 26
 	ss.tickers["CHRW"] = 59
@@ -207,31 +206,39 @@ func (ss *cohortStorageServer) setTickers() {
 }
 
 func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
-	// log.Println("Commit tx", args.TransactionId, ss.storage)
-	// defer log.Println("Commit complete tx", args.TransactionId, ss.storage)
+	// log.Println("Commit Transaction:", args.TransactionId, ss.storage)
+	// defer log.Println("Commit Complete Transaction:", args.TransactionId, ss.storage)
 
 	var exists bool
 	var commitLog LogEntry
 	if args.Status == storagerpc.Commit {
 		commitLog, exists = ss.redoLog[args.TransactionId]
-
 		if !exists {
 			return errors.New("Commit without prepare not possible")
 		}
 		for i := 0; i < len(commitLog.Logs); i++ {
-			mtx := ss.getOrCreateRWMutex(commitLog.Logs[i].Key)
 			ss.storage[commitLog.Logs[i].Key] = commitLog.Logs[i].Value
-			mtx.Unlock()
 		}
 
 	} else {
 		commitLog, exists = ss.undoLog[args.TransactionId]
 	}
 
+	// Release resources 
+	for i := 0; i < len(commitLog.Logs); i++ {
+		mtx := ss.getOrCreateRWMutex(commitLog.Logs[i].Key)
+		if mtx == new(sync.RWMutex) {
+			mtx.Unlock()
+		}
+	}
 	return nil
 }
 
 func (ss *cohortStorageServer) UpdateLogs(transactionId int, undoKVP, redoKVP []KeyValuePair) {
+	
+	// log.Println("Enter update logs")
+	// defer	log.Println("Exit update logs")
+
 	undoLogEntry := LogEntry{
 		TransactionId: transactionId,
 		Logs:          undoKVP,
@@ -243,17 +250,19 @@ func (ss *cohortStorageServer) UpdateLogs(transactionId int, undoKVP, redoKVP []
 
 	for i := 0; i < len(undoKVP); i++ {
 		mtx := ss.getOrCreateRWMutex(undoKVP[i].Key)
-		mtx.Lock()
+		if mtx == new(sync.RWMutex) {
+			mtx.Lock()
+		}
+		//log.Println("LOCKING RESOURCE: ", undoKVP[i].Key)
 	}
 
 	ss.undoLog[transactionId] = undoLogEntry
 	ss.redoLog[transactionId] = redoLogEntry
-
-
-
 }
 
 func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *storagerpc.PrepareReply) error {
+
+
 	op := args.Name
 	switch {
 	case op == datatypes.AddUser:
@@ -274,7 +283,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 				return nil
 			}
 			newValue := string(newB)
-
 			undoKvp := []KeyValuePair{KeyValuePair{Key: key, Value: userString}}
 			redoKvp := []KeyValuePair{KeyValuePair{Key: key, Value: newValue}}
 			ss.UpdateLogs(args.TransactionId, undoKvp, redoKvp)
@@ -393,7 +401,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		return nil
 
 	case op == datatypes.RemoveUserFromTeamList:
-		log.Println("Removing user from team list...", args.Data.Team.TeamID)
 		teamKey := "team-" + args.Data.Team.TeamID
 
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
@@ -407,7 +414,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		mtx.RUnlock()
 
 		if !teamExists {
-			log.Println("Team not found in map")
 			reply.Status = datatypes.NoSuchTeam
 			return nil
 		}
@@ -426,7 +432,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		} 
 		if !found {
 			reply.Status = datatypes.NoSuchTeam
-			log.Println("User not found in team map")
 
 			return nil
 		}
@@ -451,7 +456,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 	case op == datatypes.RemoveTeamFromUserList:
 
-		log.Println("Removing team from team user...", args.Data.Team.TeamID)
 
 
 		userKey := "user-" + args.Data.User.UserID
@@ -467,7 +471,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		mtx.RUnlock()
 
 		if !userExists {
-			log.Println("User not found...")
 
 			reply.Status = datatypes.NoSuchUser
 			return nil
@@ -487,7 +490,6 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			}
 		} 
 		if !found {
-			log.Println("No such team in the users list...")
 			reply.Status = datatypes.NoSuchTeam
 			return nil
 		}
@@ -511,82 +513,94 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 	case op == datatypes.Buy:
 		// In an operation there is only one request
-		log.Println("Performing buy ", args.Data.Requests[0])
 
-		req := args.Data.Requests[0]
-		tickerName := req.Ticker
-		teamKey := "team-" + args.Data.Requests[0].TeamID
-		holdingKey := "holding-" + args.Data.Requests[0].TeamID + "-" + tickerName
 
+		undoKVP := make([]KeyValuePair, 0)
+		redoKVP := make([]KeyValuePair, 0)
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
 			reply.Status = datatypes.NoSuchTeam
 			return errors.New("Wrong Server")
 		}
+
+		teamKey := "team-"+args.Data.Requests[0].TeamID
+		mtx := ss.getOrCreateRWMutex(teamKey)
+		mtx.Lock()
+
 		teamStr, ok := ss.storage[teamKey]
 		if !ok {
+			mtx.Unlock()
 			reply.Status = datatypes.NoSuchTeam
 			return nil
 		}
 		var team datatypes.Team
 		err := json.Unmarshal([]byte(teamStr), &team)
 		if err != nil {
+			mtx.Unlock()
 			reply.Status = datatypes.BadData
 			return nil
 		}
-		price, ok := ss.tickers[tickerName]
-		if !ok {
-			reply.Status = datatypes.NoSuchTicker
-			return nil
-		}
-
-		cost := req.Quantity * price
-		var newBalance uint64
-		if newBalance = team.Balance - cost; newBalance < 0 {
-			reply.Status = datatypes.InsufficientQuantity
-			return nil
-		}
-
-		undoKVP := make([]KeyValuePair, 0)
-		redoKVP := make([]KeyValuePair, 0)
-
-		var holding datatypes.Holding
-		var oldValue string
-		if holdingStr, ok := ss.storage[team.Holdings[tickerName]]; !ok {
-			// no holding exists for requested ticker
-			oldValue = ""
-			holding = datatypes.Holding{
-				Ticker:   tickerName,
-				Quantity: req.Quantity,
-				Acquired: time.Now(),
-			}
-		} else {
-			oldValue = holdingStr
-			err = json.Unmarshal([]byte(holdingStr), &holding)
-			if err != nil {
-				reply.Status = datatypes.BadData
-				return nil
-			}
-
-			holding.Quantity += req.Quantity
-			holding.Acquired = time.Now()
-		}
-
-		newHoldingBytes, err := json.Marshal(holding)
-		if err != nil {
-			reply.Status = datatypes.BadData
-			return nil
-		}
-
-		undoKVP = append(undoKVP, KeyValuePair{Key: holdingKey, Value: oldValue})
-		redoKVP = append(redoKVP, KeyValuePair{Key: holdingKey, Value: string(newHoldingBytes)})
 
 		// save the old team to Undo log before updating
 		undoKVP = append(undoKVP, KeyValuePair{Key: teamKey, Value: teamStr})
 
-		// save the updated holdingID in the team's holding list
-		team.Holdings[tickerName] = holdingKey
-		// save the new balance
-		team.Balance = newBalance
+		for reqNum:=0; reqNum < len(args.Data.Requests); reqNum++{
+			req := args.Data.Requests[reqNum]
+			tickerName := req.Ticker
+			reqTeamKey := "team-" + args.Data.Requests[reqNum].TeamID
+			if reqTeamKey == teamKey {
+				holdingKey := "holding-" + args.Data.Requests[reqNum].TeamID + "-" + tickerName
+				price, ok := ss.tickers[tickerName]
+				if !ok {
+					reply.Status = datatypes.NoSuchTicker
+					return nil
+				}
+				cost := req.Quantity * price
+				if cost > team.Balance {
+					reply.Status = datatypes.InsufficientQuantity
+					return nil
+				}
+
+				var holding datatypes.Holding
+				var oldValue string
+
+				mtx := ss.getOrCreateRWMutex(team.Holdings[tickerName])
+				mtx.RLock()
+				holdingStr, ok := ss.storage[team.Holdings[tickerName]]; 
+				mtx.RUnlock()
+				if !ok {
+					// no holding exists for requested ticker
+					oldValue = ""
+					holding = datatypes.Holding{
+						Ticker:   tickerName,
+						Quantity: req.Quantity,
+						Acquired: time.Now(),
+					}
+				} else {
+
+					oldValue = holdingStr
+					err = json.Unmarshal([]byte(holdingStr), &holding)
+					if err != nil {
+						reply.Status = datatypes.BadData
+						return nil
+					}
+
+					holding.Quantity += req.Quantity
+					holding.Acquired = time.Now()
+				}
+
+				newHoldingBytes, err := json.Marshal(holding)
+				if err != nil {
+					reply.Status = datatypes.BadData
+					return nil
+				}
+
+				undoKVP = append(undoKVP, KeyValuePair{Key: holdingKey, Value: oldValue})
+				redoKVP = append(redoKVP, KeyValuePair{Key: holdingKey, Value: string(newHoldingBytes)})
+				// save the updated holdingID in the team's holding list
+				team.Holdings[tickerName] = holdingKey
+				team.Balance = team.Balance - cost
+			}
+		}
 
 		newTeamBytes, err := json.Marshal(team)
 		if err != nil {
@@ -595,24 +609,32 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		}
 
 		redoKVP = append(redoKVP, KeyValuePair{Key: teamKey, Value: string(newTeamBytes)})
-
+		ss.storage[teamKey] = string(newTeamBytes) // Preemptively update team object
 		ss.UpdateLogs(args.TransactionId, undoKVP, redoKVP)
+
+		mtx.Unlock()
+
 		reply.Status = datatypes.OK
 		return nil
 
 	case op == datatypes.Sell:
 		// In an operation there is only one request
-		req := args.Data.Requests[0]
+
+		for reqNum :=0 ; reqNum < len(args.Data.Requests);reqNum++{
+
+
+
+		req := args.Data.Requests[reqNum]
 		tickerName := req.Ticker
 
 		// keys for lookup in storage map
 		//tickerKey := "ticker-" + tickerName
-		teamKey := "team-" + args.Data.Requests[0].TeamID
-		//holdingKey := "holding-" + args.Data.Requests[0].TeamID+ "-" + tickerName
+		teamKey := "team-" + args.Data.Requests[reqNum].TeamID
+		//holdingKey := "holding-" + args.Data.Requests[reqNum].TeamID+ "-" + tickerName
 
 		/*		holdingKey := "holding-" + args.Data.TeamID + "-" + tickerName*/
 
-		if !ss.isCorrectServer(args.Data.Requests[0].TeamID) {
+		if !ss.isCorrectServer(args.Data.Requests[reqNum].TeamID) {
 			reply.Status = datatypes.BadData
 			return errors.New("Wrong Server")
 		}
@@ -642,6 +664,8 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		// }
 
 		// if no holding found, then you can't sell anything
+
+
 		holdingKey, ok := team.Holdings[tickerName]
 		if !ok {
 			reply.Status = datatypes.InsufficientQuantity
@@ -663,6 +687,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 		// not enough shares on team
 		if holding.Quantity < req.Quantity {
+
 			reply.Status = datatypes.InsufficientQuantity
 			return nil
 		}
@@ -704,6 +729,10 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		redoKVP = append(redoKVP, KeyValuePair{Key: teamKey, Value: string(newTeamBytes)})
 
 		ss.UpdateLogs(args.TransactionId, undoKVP, redoKVP)
+
+
+		}
+
 		reply.Status = datatypes.OK
 		return nil
 	}
@@ -711,6 +740,8 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 	reply.Status = datatypes.NoSuchAction
 	return errors.New("Operation not defined on cohort")
 }
+
+
 
 func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.GetReply) error {
 	lock := ss.getOrCreateRWMutex(args.Key)
@@ -731,6 +762,7 @@ func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.G
 
 	lock.RLock()
 	value, exists := ss.storage[args.Key]
+	lock.RUnlock()
 
 	reply.Value = value
 	if !exists {
@@ -738,7 +770,6 @@ func (ss *cohortStorageServer) Get(args *storagerpc.GetArgs, reply *storagerpc.G
 	} else {
 		reply.StorageStatus = storagerpc.OK
 	}
-	lock.RUnlock()
 	reply.Status = datatypes.OK
 
 	return nil
@@ -772,7 +803,6 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 		return true
 	}
 
-	log.Println("Key on server: ", key)
 
 	hashed := util.StoreHash(key)
 	last := ss.servers[l-1]

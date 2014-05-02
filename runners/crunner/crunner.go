@@ -113,7 +113,7 @@ func main() {
 		if len(args) < (ci.nargs + 1) {
 			fmt.Printf("Expected args: %d, but got: %d\n", ci.nargs, len(args)-1)
 			flag.Usage()
-			//os.Exit(1)
+			continue
 		}
 
 		switch cmd {
@@ -135,13 +135,12 @@ func main() {
 			printStatus(ci.funcname, status, err)
 		case "jt": // join team
 
-			fmt.Println("JOINING TEAM ")
 			checkSession()
 			if len(args) < 3 {
 				fmt.Println("Error parsing requests")
 				break
 			}
-			status, err := client.JoinTeam(sessionKey, args[1], args[2]) // error handling for 
+			status, err := client.JoinTeam(sessionKey, args[1], args[2]) // error handling for
 			printStatus(ci.funcname, status, err)
 		case "lt": // leave team
 			checkSession()
@@ -262,7 +261,7 @@ func parseRequests(argList []string) ([]datatypes.Request, error) {
 		}
 	}
 
-	if (team == "" || ticker == "" || action == "" || quantity == 0){
+	if team == "" || ticker == "" || action == "" || quantity == 0 {
 		fmt.Println("Unable to parse arguments correctly")
 		return requests, errors.New("Invalid args")
 	}
@@ -275,7 +274,7 @@ func parseRequests(argList []string) ([]datatypes.Request, error) {
 	}
 
 	fmt.Println("Trying to make request", request)
-	requests = append(requests, request)	
+	requests = append(requests, request)
 
 	return requests, nil
 }

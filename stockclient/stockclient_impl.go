@@ -52,9 +52,6 @@ func (sc *stockClient) CreateTeam(sessionKey []byte, teamID, password string) (d
 }
 
 func (sc *stockClient) JoinTeam(sessionKey []byte, teamID, password string) (datatypes.Status, error) {
-	log.Println("Joining team")
-	defer log.Println("Joining team returning")
-
 	args := &stockrpc.JoinTeamArgs{TeamID: teamID, Password: password, SessionKey: sessionKey}
 	var reply stockrpc.JoinTeamReply
 	if err := sc.client.Call("StockServer.JoinTeam", args, &reply); err != nil {

@@ -92,10 +92,13 @@ func (ls *libstore) Get(key string) (string, storagerpc.Status, error) {
 	var reply storagerpc.GetReply
 
 	/*	log.Println("ss: ", ls.storageServers)*/
-	ss := util.FindServerFromKey(key, ls.storageServers)
+	ss, err := util.FindServerFromKey(key, ls.storageServers)
+	if err != nil {
+		log.Println("Unable to parse key")
+	}
 
 	/*	log.Println("Connections on libstore: ", ls.connections)*/
-	err := ls.connections[ss.HostPort].Call("CohortStorageServer.Get", args, &reply)
+	err = ls.connections[ss.HostPort].Call("CohortStorageServer.Get", args, &reply)
 	if err != nil {
 		return "", storagerpc.NotReady, err
 	}
@@ -136,7 +139,6 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 	// Check if user and team exists for both JoinTeam/LeaveTeam
 	case datatypes.JoinTeam:
 
-
 		if !ls.checkExists("user-" + data.User.UserID) {
 			return datatypes.NoSuchUser, nil
 		} else if !ls.checkExists("team-" + data.Team.TeamID) {
@@ -145,7 +147,6 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 		status, err := ls.coord.PerformTransaction(name, *data)
 
 		return status, err
-
 
 	case datatypes.LeaveTeam:
 		// never enters this case...??
