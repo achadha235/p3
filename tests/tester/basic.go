@@ -6,6 +6,7 @@ import (
 	"github.com/achadha235/p3/stockclient"
 	"log"
 	"os"
+	"time"
 )
 
 type testFunc struct {
@@ -30,6 +31,7 @@ var statusMap = map[datatypes.Status]string{
 	datatypes.Exists:               "Exists",
 	datatypes.PermissionDenied:     "PermissionDenied",
 	datatypes.BadData:              "BadData",
+	datatypes.NoSuchSession:		"NoSuchSession",
 	0:                              "Unknown",
 }
 
@@ -65,6 +67,7 @@ func checkErrorStatus(err error, status, expectedStatus datatypes.Status) bool {
 		LOGE.Println("FAIL: unexpected error returned:", err)
 		return true
 	}
+	log.Println("Recieved status: ", status)
 	if status != expectedStatus {
 		LOGE.Printf("FAIL: incorrect status %s, expected status %s\n", statusMap[status], statusMap[expectedStatus])
 		return true
@@ -106,11 +109,14 @@ func testCreateUserDuplicate() bool {
 }
 
 func testCreateTeamValid() bool {
+	client.CreateUser("testcreateuser", "pass")
+	_, sessionKey, _ := client.LoginUser("testcreateuser", "pass")
 	status, err := client.CreateTeam(sessionKey, "team1", "teampass")
 	return checkErrorStatus(err, status, datatypes.OK)
 }
 
 func testCreateTeamDuplicate() bool {
+	_, sessionKey, _ := client.LoginUser("testcreateuser", "pass")
 	client.CreateTeam(sessionKey, "dupteam", "teampass")
 	status, err := client.CreateTeam(sessionKey, "dupteam", "alreadythere")
 	return checkErrorStatus(err, status, datatypes.Exists)
@@ -133,39 +139,64 @@ func testLoginUserInvalidPassword() bool {
 	return checkErrorStatus(err, status, datatypes.PermissionDenied)
 }
 
+func testJoinTeamValid() bool {
+	client.CreateUser("testJoinTeamValidUser", "pass")
+	_, sessionKey, _ := client.LoginUser("testJoinTeamValidUser", "pass")
+	client.CreateTeam(sessionKey, "testValidTeamJoin", "pw")
+	status, err := client.JoinTeam(sessionKey, "testValidTeamJoin", "pw")
+	return checkErrorStatus(err, status, datatypes.OK)
+}
 func testJoinTeamInvalidTeam() bool {
-	status, err := client.JoinTeam(sessionKey, "invalidteam", "doesntmatter")
+	client.CreateUser("testJoinTeamInvalidTeamUser", "pass")
+	_, sessionKey, _ := client.LoginUser("testJoinTeamInvalidTeamUser", "pass")
+	status, err := client.JoinTeam(sessionKey, "aninvalidteam", "doesntmatter")
 	return checkErrorStatus(err, status, datatypes.NoSuchTeam)
+
+
+
+
 }
 
 func testJoinTeamInvalidPassword() bool {
-	client.CreateTeam(sessionKey, "jointeam", "pw")
-	status, err := client.JoinTeam(sessionKey, "jointeam", "incorrect")
+	client.CreateUser("testJoinTeamInvalidPassword", "pass")
+	_, sessionKey, _ := client.LoginUser("testJoinTeamInvalidPassword", "pass")
+	client.CreateTeam(sessionKey, "testJoinTeamInvalidPassword", "pw")
+	status, err := client.JoinTeam(sessionKey, "testJoinTeamInvalidPassword", "incorrectpw")
 	return checkErrorStatus(err, status, datatypes.PermissionDenied)
 }
 
-func testJoinTeamValid() bool {
-	client.CreateTeam(sessionKey, "jointeam2", "pw")
-	status, err := client.JoinTeam(sessionKey, "jointeam2", "pw")
-	return checkErrorStatus(err, status, datatypes.OK)
-}
 
 func testLeaveTeamInvalidTeam() bool {
-	status, err := client.LeaveTeam(sessionKey, "invalidteam")
+	client.CreateUser("testLeaveTeamInvalidTeam", "pass")
+	_, sessionKey, _ := client.LoginUser("testLeaveTeamInvalidTeam", "pass")
+
+	status, err := client.LeaveTeam(sessionKey, "aninvalidteam")
 	return checkErrorStatus(err, status, datatypes.NoSuchTeam)
 }
 
 func testLeaveTeamNotOnTeam() bool {
+	client.CreateUser("testLeaveTeamNotOnTeamOwner", "hey")
+	_, sessionKey, _ := client.LoginUser("testLeaveTeamNotOnTeamOwner", "hey")
 	client.CreateTeam(sessionKey, "leaveteam", "bye")
 	client.CreateUser("newUser", "hey")
-	_, key, _ := client.LoginUser("newUser", "hey")
-	status, err := client.LeaveTeam(key, "leaveteam")
-	return checkErrorStatus(err, status, datatypes.NoSuchUser)
+
+
+	client.CreateUser("testLeaveTeamNotOnTeamRando", "randomguypass")
+	_, randomSesh, _ := client.LoginUser("testLeaveTeamNotOnTeamRando", "randomguypass")
+	status, err := client.LeaveTeam(randomSesh, "leaveteam")
+	return checkErrorStatus(err, status, datatypes.NoSuchTeam)
 }
 
 func testLeaveTeamValid() bool {
-	client.CreateTeam(sessionKey, "myteam", "secret")
-	status, err := client.LeaveTeam(sessionKey, "myteam")
+	client.CreateUser("testLeaveTeamValid", "pass")
+	_, sessionKey, _ := client.LoginUser("testLeaveTeamValid", "pass")
+	client.CreateTeam(sessionKey, "testLeaveTeamValid", "bye")
+	status, err := client.JoinTeam(sessionKey, "testLeaveTeamValid", "bye")
+	log.Println("JOINED TEAM STATUS: ", statusMap[status], "error", err)
+	time.Sleep(time.Second)
+
+	status, err = client.LeaveTeam(sessionKey, "testLeaveTeamValid")
+
 	return checkErrorStatus(err, status, datatypes.OK)
 }
 
@@ -233,9 +264,9 @@ func main() {
 		{"testLoginUserInvalidUser", testLoginUserInvalidUser},
 		{"testLoginUserInvalidPassword", testLoginUserInvalidPassword},
 
+		{"testJoinTeamValid", testJoinTeamValid},
 		{"testJoinTeamInvalidTeam", testJoinTeamInvalidTeam},
 		{"testJoinTeamInvalidPassword", testJoinTeamInvalidPassword},
-		{"testJoinTeamValid", testJoinTeamValid},
 
 		{"testLeaveTeamInvalidTeam", testLeaveTeamInvalidTeam},
 		{"testLeaveTeamNotOnTeam", testLeaveTeamNotOnTeam},
@@ -272,7 +303,16 @@ func main() {
 
 	// Run tests.
 	for _, t := range tests {
-		t.f()
+		log.Println("Starting ", t.name, "...")
+		fail := t.f()
+		if fail {
+			log.Println("Failed ", t.name, ".")
+		} else {
+			log.Println("Passed ", t.name, "!")
+
+		}
+
+
 	}
 
 	LOGE.Println("Finished tests")

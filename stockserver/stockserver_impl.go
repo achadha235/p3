@@ -130,7 +130,6 @@ func (ss *stockServer) CreateUser(args *stockrpc.CreateUserArgs, reply *stockrpc
 		reply.Status = datatypes.BadData
 		return nil
 	}
-
 	// create user object
 	user := datatypes.User{
 		UserID: args.UserID,
@@ -139,7 +138,6 @@ func (ss *stockServer) CreateUser(args *stockrpc.CreateUserArgs, reply *stockrpc
 	}
 
 	data := &datatypes.DataArgs{User: user}
-
 	status, err := ss.ls.Transact(datatypes.CreateUser, data)
 	if err != nil {
 		reply.Status = status

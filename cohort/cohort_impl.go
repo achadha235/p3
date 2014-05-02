@@ -207,6 +207,9 @@ func (ss *cohortStorageServer) setTickers() {
 }
 
 func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storagerpc.CommitReply) error {
+	// log.Println("Commit tx", args.TransactionId, ss.storage)
+	// defer log.Println("Commit complete tx", args.TransactionId, ss.storage)
+
 	var exists bool
 	var commitLog LogEntry
 	if args.Status == storagerpc.Commit {
@@ -248,7 +251,12 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 	switch {
 	case op == datatypes.AddUser:
 		key := "user-" + args.Data.User.UserID
+
+		mtx := ss.getOrCreateRWMutex(key)
+		mtx.RLock()
 		userString, exists := ss.storage[key]
+		mtx.RUnlock()
+
 		if exists {
 			reply.Status = datatypes.Exists
 			return nil
@@ -268,7 +276,12 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		}
 	case op == datatypes.AddTeam:
 		key := "team-" + args.Data.Team.TeamID
+
+		mtx := ss.getOrCreateRWMutex(key)
+		mtx.RLock()
 		teamString, exists := ss.storage[key]
+		mtx.RUnlock()
+
 		if exists {
 			reply.Status = datatypes.Exists
 			return nil
@@ -297,11 +310,17 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			return errors.New("Wrong Server")
 		}
 
+
+		mtx := ss.getOrCreateRWMutex(teamKey)
+		mtx.RLock()
 		teamString, teamExists := ss.storage[teamKey]
+		mtx.RUnlock()
+
 		if !teamExists {
 			reply.Status = datatypes.NoSuchTeam
 			return nil
 		}
+
 		var team datatypes.Team
 		err := json.Unmarshal([]byte(teamString), &team)
 		if err != nil {
@@ -338,7 +357,11 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			return errors.New("Wrong Server")
 		}
 
+		mtx := ss.getOrCreateRWMutex(userKey)
+		mtx.RLock()
 		userString, userExists := ss.storage[userKey]
+		mtx.RUnlock()
+
 		if !userExists {
 			reply.Status = datatypes.NoSuchUser
 			return nil
@@ -363,7 +386,7 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 		return nil
 
 	case op == datatypes.RemoveUserFromTeamList:
-
+		log.Println("Removing user from team list...", args.Data.Team.TeamID)
 		teamKey := "team-" + args.Data.Team.TeamID
 
 		if !ss.isCorrectServer(args.Data.Team.TeamID) {
@@ -371,8 +394,13 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			return errors.New("Wrong Server")
 		}
 
+		mtx := ss.getOrCreateRWMutex(teamKey)
+		mtx.RLock()
 		teamString, teamExists := ss.storage[teamKey]
+		mtx.RUnlock()
+
 		if !teamExists {
+			log.Println("Team not found in map")
 			reply.Status = datatypes.NoSuchTeam
 			return nil
 		}
@@ -383,12 +411,29 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			return nil
 		}
 
+		found := false
+		for i := 0;  i < len(team.Users); i++ {
+			if team.Users[i] == args.Data.User.UserID {
+				found = true
+			}
+		} 
+		if !found {
+			reply.Status = datatypes.NoSuchTeam
+			log.Println("User not found in team map")
+
+			return nil
+		}
+
+
 		team.Users = remove(team.Users, args.Data.User.UserID)
 		newTeamBytes, err := json.Marshal(team)
 		if err != nil {
 			reply.Status = datatypes.BadData
 			return nil
 		}
+
+
+
 
 		undoKvp := []KeyValuePair{KeyValuePair{Key: teamKey, Value: teamString}}
 		redoKvp := []KeyValuePair{KeyValuePair{Key: teamKey, Value: string(newTeamBytes)}}
@@ -399,6 +444,9 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 	case op == datatypes.RemoveTeamFromUserList:
 
+		log.Println("Removing team from team user...", args.Data.Team.TeamID)
+
+
 		userKey := "user-" + args.Data.User.UserID
 
 		if !ss.isCorrectServer(args.Data.User.UserID) {
@@ -406,8 +454,14 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			return errors.New("Wrong Server")
 		}
 
+		mtx := ss.getOrCreateRWMutex(userKey)
+		mtx.RLock()
 		userString, userExists := ss.storage[userKey]
+		mtx.RUnlock()
+
 		if !userExists {
+			log.Println("User not found...")
+
 			reply.Status = datatypes.NoSuchUser
 			return nil
 		}
@@ -417,12 +471,29 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 			reply.Status = datatypes.BadData
 			return nil
 		}
+
+	
+		found := false
+		for i := 0;  i < len(user.Teams); i++ {
+			if user.Teams[i] == args.Data.Team.TeamID {
+				found = true
+			}
+		} 
+		if !found {
+			log.Println("No such team in the users list...")
+			reply.Status = datatypes.NoSuchTeam
+			return nil
+		}
+		
 		user.Teams = remove(user.Teams, args.Data.Team.TeamID)
 		newUserBytes, err := json.Marshal(user)
 		if err != nil {
 			reply.Status = datatypes.BadData
 			return nil
 		}
+	
+
+
 
 		undoKvp := []KeyValuePair{KeyValuePair{Key: userKey, Value: userString}}
 		redoKvp := []KeyValuePair{KeyValuePair{Key: userKey, Value: string(newUserBytes)}}
@@ -706,6 +777,7 @@ func (ss *cohortStorageServer) isCorrectServer(key string) bool {
 	}
 	return false
 }
+
 
 // Remove an string from a slice of strings
 func remove(list []string, id string) []string {
