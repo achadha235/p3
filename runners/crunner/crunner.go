@@ -134,6 +134,8 @@ func main() {
 			status, err := client.CreateTeam(sessionKey, args[1], args[2])
 			printStatus(ci.funcname, status, err)
 		case "jt": // join team
+
+			fmt.Println("JOINING TEAM ")
 			checkSession()
 			if len(args) < 3 {
 				fmt.Println("Error parsing requests")

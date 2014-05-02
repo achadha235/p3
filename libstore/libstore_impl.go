@@ -159,7 +159,6 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 
 	case datatypes.MakeTransaction:
 		for i := 0; i < len(data.Requests); i++ {
-			// non-OK status then leg of transaction is invalid so cancel all
 			if stat := ls.checkRequest(data.Requests[i]); stat != datatypes.OK {
 				log.Println("Request is not okay")
 				return stat, nil
@@ -169,7 +168,6 @@ func (ls *libstore) Transact(name datatypes.TransactionType, data *datatypes.Dat
 		status, err := ls.coord.PerformTransaction(name, *data)
 		return status, err
 	}
-
 	return datatypes.NoSuchAction, nil
 }
 

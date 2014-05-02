@@ -200,57 +200,23 @@ func testLeaveTeamValid() bool {
 	return checkErrorStatus(err, status, datatypes.OK)
 }
 
-/*func testBuyOneValid() bool {
+func testBuyOneValid() bool {
+	client.CreateUser("testBuyOneValid", "pass")
+	_, sessionKey, _ := client.LoginUser("testBuyOneValid", "pass")
+	status, _ := client.CreateTeam(sessionKey, "testBuyOneValidTeam", "pw")
+	status, _ = client.JoinTeam(sessionKey, "testBuyOneValidTeam", "pw")
 
+	reqs := []datatypes.Request{ 
+		datatypes.Request{
+			Action:"buy",
+			TeamID:"testBuyOneValidTeam",
+			Ticker: "APPL",
+			Quantity:10,
+		},
+	}
+	status, err := client.MakeTransaction(sessionKey, reqs)
+	return checkErrorStatus(err, status, datatypes.OK)
 }
-
-func testBuyMultValid() bool {
-
-}
-
-func testSellOneValid() bool {
-
-}
-
-func testSellMultValid() bool {
-
-}
-
-func testBuySellMultValid() bool {
-
-}
-
-func testBuyMultWithInvalid() bool {
-
-}
-
-func testSellMultWithInvalid() bool {
-
-}
-
-func testBuySellMultWithInvalidBuy() bool {
-
-}
-
-func testBuySellMultWithInvalidSell() bool {
-
-}
-
-func testDoActionsNotLoggedIn() bool {
-
-}
-
-func testDoActionsInvalidSession() bool {
-
-}
-
-func testGetPortfolioInvalidTeam() bool {
-	_, status, err := client.GetPortfolio("nada")
-	return checkErrorStatus(err, status, datatypes.NoSuchTeam)
-}
-
-func testGetPortfolioValid() bool {
-}*/
 
 func main() {
 	tests := []testFunc{
@@ -271,23 +237,7 @@ func main() {
 		{"testLeaveTeamInvalidTeam", testLeaveTeamInvalidTeam},
 		{"testLeaveTeamNotOnTeam", testLeaveTeamNotOnTeam},
 		{"testLeaveTeamValid", testLeaveTeamValid},
-
-		/*		{"testBuyOneValid", testBuyOneValid},
-				{"testBuyMultValid", testBuyMultValid},
-				{"testSellOneValid", testSellOneValid},
-				{"testSellMultValid", testSellMultValid},
-				{"testBuySellMultValid", testBuySellMultValid},
-
-				{"testBuyMultWithInvalid", testBuyMultWithInvalid},
-				{"testSellMultWithInvalid", testSellMultWithInvalid},
-				{"testBuySellMultWithInvalidBuy", testBuySellMultWithInvalidBuy},
-				{"testBuySellMultWithInvalidSell", testBuySellMultWithInvalidSell},
-
-				{"testGetPortfolioInvalidTeam", testGetPortfolioInvalidTeam},
-				{"testGetPortfolioValid", testGetPortfolioValid},
-
-				{"testDoActionsNotLoggedIn", testDoActionsNotLoggedIn},
-				{"testDoActionsInvalidSession", testDoActionsInvalidSession},*/
+		{"testBuyOneValid", testBuyOneValid},
 	}
 
 	_ = tests

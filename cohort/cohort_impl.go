@@ -220,7 +220,6 @@ func (ss *cohortStorageServer) Commit(args *storagerpc.CommitArgs, reply *storag
 		}
 		for i := 0; i < len(commitLog.Logs); i++ {
 			mtx := ss.getOrCreateRWMutex(commitLog.Logs[i].Key)
-			mtx.Lock()
 			ss.storage[commitLog.Logs[i].Key] = commitLog.Logs[i].Value
 			mtx.Unlock()
 		}
@@ -242,8 +241,16 @@ func (ss *cohortStorageServer) UpdateLogs(transactionId int, undoKVP, redoKVP []
 		Logs:          redoKVP,
 	}
 
+	for i := 0; i < len(undoKVP); i++ {
+		mtx := ss.getOrCreateRWMutex(undoKVP[i].Key)
+		mtx.Lock()
+	}
+
 	ss.undoLog[transactionId] = undoLogEntry
 	ss.redoLog[transactionId] = redoLogEntry
+
+
+
 }
 
 func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *storagerpc.PrepareReply) error {
@@ -504,6 +511,8 @@ func (ss *cohortStorageServer) Prepare(args *storagerpc.PrepareArgs, reply *stor
 
 	case op == datatypes.Buy:
 		// In an operation there is only one request
+		log.Println("Performing buy ", args.Data.Requests[0])
+
 		req := args.Data.Requests[0]
 		tickerName := req.Ticker
 		teamKey := "team-" + args.Data.Requests[0].TeamID
