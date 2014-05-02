@@ -255,6 +255,8 @@ func (ss *stockServer) MakeTransaction(args *stockrpc.MakeTransactionArgs, reply
 		return nil
 	}
 
+	log.Println("Data: ", args.Requests)
+
 	user := datatypes.User{UserID: userID}
 
 	data := &datatypes.DataArgs{

@@ -1,7 +1,7 @@
 package util
 
 import (
-	"fmt"
+	"errors"
 	"github.com/achadha235/p3/rpc/storagerpc"
 	"hash/fnv"
 	"net/rpc"
@@ -13,19 +13,24 @@ const (
 )
 
 // return the appropriate node to use for the RPC request to the hashing ring
-func FindServerFromKey(key string, servers []storagerpc.Node) *storagerpc.Node {
+// key is of the form <type>-<id>
+func FindServerFromKey(key string, servers []storagerpc.Node) (*storagerpc.Node, error) {
 	if servers == nil || len(servers) == 0 {
-		return nil
+		return nil, errors.New("No nodes")
 	} else if len(servers) == 1 {
-		return &servers[0]
+		return &servers[0], nil
 	}
 
 	parts := strings.Split(key, "-")
-	if len(parts) >= 2 {
-		key = parts[1]
+	if len(parts) != 2 {
+		return nil, errors.New("Unable to parse key")
 	}
 
-	fmt.Println("key: ", key)
+	return FindServerFromID(parts[1], servers), nil
+}
+
+func FindServerFromID(key string, servers []storagerpc.Node) *storagerpc.Node {
+
 	hashed := StoreHash(key)
 
 	current := servers[0]

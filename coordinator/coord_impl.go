@@ -74,7 +74,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Data:          data,
 		}
 
-		ss := util.FindServerFromKey(data.User.UserID, coord.servers)
+		ss := util.FindServerFromID(data.User.UserID, coord.servers)
 		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
 
 		coord.nextOperationId++
@@ -87,7 +87,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Data:          data,
 		}
 
-		ss := util.FindServerFromKey("team-"+data.Team.TeamID, coord.servers)
+		ss := util.FindServerFromID(data.Team.TeamID, coord.servers)
 		prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], args)
 
 		coord.nextOperationId++
@@ -100,7 +100,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Name:          datatypes.AddUserToTeamList,
 			Data:          data,
 		}
-		ssTeam := util.FindServerFromKey("team-"+data.Team.TeamID, coord.servers)
+		ssTeam := util.FindServerFromID(data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
 		coord.nextOperationId++
 
@@ -111,7 +111,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Data:          data,
 		}
 
-		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
+		ssUser := util.FindServerFromID(data.User.UserID, coord.servers)
 		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
 
 		coord.nextOperationId++
@@ -125,7 +125,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Data:          data,
 		}
 
-		ssTeam := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+		ssTeam := util.FindServerFromID(data.Team.TeamID, coord.servers)
 		prepareMap[ssTeam.HostPort] = append(prepareMap[ssTeam.HostPort], teamArgs)
 		coord.nextOperationId++
 
@@ -135,7 +135,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 			Data:          data,
 		}
 
-		ssUser := util.FindServerFromKey(data.User.UserID, coord.servers)
+		ssUser := util.FindServerFromID(data.User.UserID, coord.servers)
 		prepareMap[ssUser.HostPort] = append(prepareMap[ssUser.HostPort], userArgs)
 
 		coord.nextOperationId++
@@ -168,7 +168,7 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 				Data:          reqData,
 			}
 
-			ss := util.FindServerFromKey(data.Team.TeamID, coord.servers)
+			ss := util.FindServerFromID(data.Team.TeamID, coord.servers)
 			prepareMap[ss.HostPort] = append(prepareMap[ss.HostPort], teamArgs)
 
 			coord.nextOperationId++
@@ -176,8 +176,6 @@ func (coord *coordinator) PerformTransaction(name datatypes.TransactionType, dat
 	default:
 		return datatypes.NoSuchAction, nil
 	}
-
-
 
 	stat, err := coord.Propose(prepareMap)
 	return stat, err
@@ -246,7 +244,7 @@ func (coord *coordinator) Propose(prepareMap PrepareMap) (datatypes.Status, erro
 
 	// receive Ack from all nodes
 	for i := 0; i < responsesToExpect; i++ {
-		rpcReply := <- doneCh
+		rpcReply := <-doneCh
 		// TODO: if RPC fails then retry sending message until all received (?)
 		log.Println("commit response")
 
